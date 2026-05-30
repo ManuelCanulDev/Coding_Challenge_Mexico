@@ -1,6 +1,7 @@
 import ccxt, { type Exchange, type OrderBook } from 'ccxt';
 import type { ExchangeId, NormalizedOrderBook } from '../types/index.js';
 import { config, EXCHANGE_SYMBOLS, DEMO_SPREAD_BPS } from '../config.js';
+import { getRuntimeSettings } from './settingsService.js';
 import { generateMockOrderBook } from './mockDataService.js';
 
 const exchangeInstances: Partial<Record<ExchangeId, Exchange>> = {};
@@ -44,7 +45,7 @@ function normalizeOrderBook(
 }
 
 function applyDemoSpread(book: NormalizedOrderBook): NormalizedOrderBook {
-  if (!config.demoMode) return book;
+  if (!getRuntimeSettings().demoMode) return book;
 
   const factor = 1 + DEMO_SPREAD_BPS[book.exchange] / 10_000;
   const scale = (price: number) => Math.round(price * factor * 100) / 100;

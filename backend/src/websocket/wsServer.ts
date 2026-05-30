@@ -1,15 +1,19 @@
+import type { Server as HttpServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { AppState, WsMessage } from '../types/index.js';
-import { config } from '../config.js';
 import type { AppOrchestrator } from '../services/orchestrator.js';
 
 export class WsBroadcastServer {
   private wss: WebSocketServer;
   private clients = new Set<WebSocket>();
   private unsubscribe: (() => void) | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private orchestrator: AppOrchestrator) {
-    this.wss = new WebSocketServer({ port: config.wsPort });
+  constructor(
+    private orchestrator: AppOrchestrator,
+    httpServer: HttpServer,
+  ) {
+    this.wss = new WebSocketServer({ server: httpServer, path: '/ws' });
     this.setup();
   }
 
@@ -32,11 +36,15 @@ export class WsBroadcastServer {
       });
     });
 
+    this.wss.on('error', (error) => {
+      console.error('[WS] Server error:', error.message);
+    });
+
     this.unsubscribe = this.orchestrator.onStateChange((state: AppState) => {
       this.broadcast(state);
     });
 
-    setInterval(() => {
+    this.pingTimer = setInterval(() => {
       for (const client of this.clients) {
         if (client.readyState === WebSocket.OPEN) {
           const ping: WsMessage = { type: 'ping', timestamp: Date.now() };
@@ -45,7 +53,7 @@ export class WsBroadcastServer {
       }
     }, 30_000);
 
-    console.log(`[WS] Server listening on ws://localhost:${config.wsPort}`);
+    console.log('[WS] WebSocket attached at path /ws');
   }
 
   private sendToClient(client: WebSocket, state: AppState): void {
@@ -73,6 +81,7 @@ export class WsBroadcastServer {
   }
 
   close(): void {
+    if (this.pingTimer) clearInterval(this.pingTimer);
     this.unsubscribe?.();
     for (const client of this.clients) {
       client.close();

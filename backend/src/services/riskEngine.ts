@@ -1,5 +1,11 @@
-import type { ArbitrageOpportunity, CircuitBreakerState, SimulatedTrade } from '../types/index.js';
-import { config } from '../config.js';
+import type { ArbitrageOpportunity, CircuitBreakerState, SimulatedTrade, RuntimeSettings } from '../types/index.js';
+import { getRuntimeSettings } from './settingsService.js';
+
+function effectiveLatencyLimit(settings: RuntimeSettings): number {
+  return settings.demoMode
+    ? Math.max(settings.maxCombinedLatencyMs, 5000)
+    : settings.maxCombinedLatencyMs;
+}
 
 export class RiskEngine {
   private consecutiveNegativeTrades = 0;
@@ -30,6 +36,7 @@ export class RiskEngine {
   }
 
   validateOpportunity(opportunity: ArbitrageOpportunity): { allowed: boolean; reason: string; riskPenalty: number } {
+    const settings = getRuntimeSettings();
     let riskPenalty = 0;
 
     if (this.isExecutionPaused()) {
@@ -40,26 +47,26 @@ export class RiskEngine {
       };
     }
 
-    if (opportunity.netProfitPct <= config.minNetProfitPct) {
+    if (opportunity.netProfitPct <= settings.minNetProfitPct) {
       return {
         allowed: false,
-        reason: `Net profit ${opportunity.netProfitPct.toFixed(4)}% below minimum ${config.minNetProfitPct}%`,
+        reason: `Net profit ${opportunity.netProfitPct.toFixed(4)}% below minimum ${settings.minNetProfitPct}%`,
         riskPenalty: 20,
       };
     }
 
-    if (opportunity.maxExecutableBtc < config.minVolumeBtc) {
+    if (opportunity.maxExecutableBtc < settings.minVolumeBtc) {
       return {
         allowed: false,
-        reason: `Volume ${opportunity.maxExecutableBtc.toFixed(6)} BTC below minimum ${config.minVolumeBtc} BTC`,
+        reason: `Volume ${opportunity.maxExecutableBtc.toFixed(6)} BTC below minimum ${settings.minVolumeBtc} BTC`,
         riskPenalty: 15,
       };
     }
 
-    if (opportunity.combinedLatencyMs > config.maxCombinedLatencyMs) {
+    if (opportunity.combinedLatencyMs > effectiveLatencyLimit(settings)) {
       return {
         allowed: false,
-        reason: `Combined latency ${opportunity.combinedLatencyMs}ms exceeds ${config.maxCombinedLatencyMs}ms`,
+        reason: `Combined latency ${opportunity.combinedLatencyMs}ms exceeds ${effectiveLatencyLimit(settings)}ms`,
         riskPenalty: 25,
       };
     }
@@ -88,15 +95,21 @@ export class RiskEngine {
 
   recordTrade(trade: SimulatedTrade): void {
     if (trade.status === 'rejected') return;
+    const settings = getRuntimeSettings();
 
     if (trade.netProfitUsd < 0) {
       this.consecutiveNegativeTrades += 1;
-      if (this.consecutiveNegativeTrades >= config.circuitBreakerThreshold) {
-        this.pausedUntil = Date.now() + config.circuitBreakerCooldownMs;
-        console.warn('[RiskEngine] Circuit breaker triggered — pausing execution for 60s');
+      if (this.consecutiveNegativeTrades >= settings.circuitBreakerThreshold) {
+        this.pausedUntil = Date.now() + settings.circuitBreakerCooldownMs;
+        console.warn('[RiskEngine] Circuit breaker triggered — pausing execution');
       }
     } else {
       this.consecutiveNegativeTrades = 0;
     }
+  }
+
+  reset(): void {
+    this.consecutiveNegativeTrades = 0;
+    this.pausedUntil = null;
   }
 }

@@ -3,13 +3,16 @@ import type {
   ArbitrageOpportunity,
   BotStatus,
   PerformanceMetrics,
+  RuntimeSettings,
   SimulatedTrade,
 } from '../types/index.js';
-import { config } from '../config.js';
 import { fetchAllOrderBooks } from './orderBookService.js';
 import { ArbitrageEngine } from './arbitrageEngine.js';
 import { WalletService } from './walletService.js';
 import { RiskEngine } from './riskEngine.js';
+import { settingsService } from './settingsService.js';
+import { buildMarketInsight } from './marketInsightService.js';
+import { OpportunityLogService } from './opportunityLogService.js';
 
 type StateListener = (state: AppState) => void;
 
@@ -17,6 +20,7 @@ export class AppOrchestrator {
   private walletService = new WalletService();
   private arbitrageEngine = new ArbitrageEngine(this.walletService);
   private riskEngine = new RiskEngine();
+  private opportunityLog = new OpportunityLogService();
   private listeners: StateListener[] = [];
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private botStatus: BotStatus = 'Active';
@@ -25,14 +29,13 @@ export class AppOrchestrator {
   private opportunities: ArbitrageOpportunity[] = [];
   private trades: SimulatedTrade[] = [];
   private pnlHistory: AppState['pnlHistory'] = [{ timestamp: Date.now(), cumulativePnl: 0 }];
-  private opportunitiesDetected = 0;
   private opportunitiesRejected = 0;
-  private lastExecutedOpportunityId: string | null = null;
+  private lastExecutedRoute: string | null = null;
   private lastExecutionTime = 0;
 
   start(): void {
     void this.tick();
-    this.pollTimer = setInterval(() => void this.tick(), config.pollIntervalMs);
+    this.restartPolling();
   }
 
   stop(): void {
@@ -40,6 +43,39 @@ export class AppOrchestrator {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+  }
+
+  updateSettings(partial: Partial<RuntimeSettings>): RuntimeSettings {
+    const previous = settingsService.get();
+    const updated = settingsService.update(partial);
+
+    if (partial.demoMode !== undefined && partial.demoMode !== previous.demoMode) {
+      this.resetTradingSession();
+      console.info(`[Orchestrator] Mode switched to ${updated.demoMode ? 'demo' : 'live'} — session reset`);
+    }
+
+    if (partial.pollIntervalMs !== undefined) {
+      this.restartPolling();
+    }
+    this.emitState();
+    return updated;
+  }
+
+  private resetTradingSession(): void {
+    this.trades = [];
+    this.pnlHistory = [{ timestamp: Date.now(), cumulativePnl: 0 }];
+    this.opportunitiesRejected = 0;
+    this.lastExecutedRoute = null;
+    this.lastExecutionTime = 0;
+    this.walletService.resetWallets();
+    this.riskEngine.reset();
+    this.opportunityLog.reset();
+  }
+
+  private restartPolling(): void {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    const interval = settingsService.get().pollIntervalMs;
+    this.pollTimer = setInterval(() => void this.tick(), interval);
   }
 
   onStateChange(listener: StateListener): () => void {
@@ -62,24 +98,35 @@ export class AppOrchestrator {
     return {
       botStatus: circuitBreaker.active ? 'Paused' : this.botStatus,
       circuitBreaker,
+      settings: settingsService.get(),
       orderBooks: this.orderBooks,
       opportunities: this.opportunities,
+      opportunityLog: this.opportunityLog.getEntries(),
       trades: this.trades.slice(0, 100),
       wallets: this.walletService.getBalances(referencePrice),
       performance,
       pnlHistory: this.pnlHistory,
+      marketInsight: buildMarketInsight({
+        opportunities: this.opportunities,
+        orderBooks: this.orderBooks,
+        demoMode: settingsService.get().demoMode,
+      }),
       lastUpdated: Date.now(),
     };
   }
 
   private async tick(): Promise<void> {
     try {
+      const settings = settingsService.get();
+      if (settings.demoMode) {
+        this.walletService.replenishDemoWallets();
+      }
       this.orderBooks = await fetchAllOrderBooks();
       this.opportunities = this.arbitrageEngine.detectOpportunities(this.orderBooks);
-      this.opportunitiesDetected += this.opportunities.length;
+      this.opportunityLog.appendFromScan(this.opportunities, settings.demoMode);
 
-      if (config.autoExecute && !this.riskEngine.isExecutionPaused()) {
-        await this.tryExecuteBestOpportunity();
+      if (settings.autoExecute && !this.riskEngine.isExecutionPaused()) {
+        this.tryExecuteOpportunities(settings);
       }
 
       this.emitState();
@@ -88,50 +135,57 @@ export class AppOrchestrator {
     }
   }
 
-  private async tryExecuteBestOpportunity(): Promise<void> {
+  private tryExecuteOpportunities(settings: RuntimeSettings): void {
+    const cooldownMs = settings.demoMode ? Math.max(800, settings.pollIntervalMs) : 3000;
     const now = Date.now();
-    if (now - this.lastExecutionTime < 3000) return;
+    if (now - this.lastExecutionTime < cooldownMs) return;
 
     const executable = this.opportunities.filter((opp) => opp.status === 'executable');
     if (executable.length === 0) return;
 
-    const best = executable[0];
-    if (best.id === this.lastExecutedOpportunityId) return;
+    for (const candidate of executable) {
+      const routeKey = `${candidate.buyExchange}:${candidate.sellExchange}`;
+      if (routeKey === this.lastExecutedRoute && now - this.lastExecutionTime < cooldownMs * 2) {
+        continue;
+      }
 
-    const validation = this.riskEngine.validateOpportunity(best);
-    if (!validation.allowed) {
-      this.opportunitiesRejected += 1;
-      best.status = 'rejected';
-      best.reason = validation.reason;
-      return;
-    }
+      const validation = this.riskEngine.validateOpportunity(candidate);
+      if (!validation.allowed) {
+        this.opportunitiesRejected += 1;
+        candidate.status = 'rejected';
+        candidate.reason = validation.reason;
+        continue;
+      }
 
-    const buyBook = this.orderBooks.find((book) => book.exchange === best.buyExchange);
-    const sellBook = this.orderBooks.find((book) => book.exchange === best.sellExchange);
-    if (!buyBook || !sellBook) return;
+      const buyBook = this.orderBooks.find((book) => book.exchange === candidate.buyExchange);
+      const sellBook = this.orderBooks.find((book) => book.exchange === candidate.sellExchange);
+      if (!buyBook || !sellBook) continue;
 
-    const trade = this.walletService.executeTrade({
-      buyExchange: best.buyExchange,
-      sellExchange: best.sellExchange,
-      buyBook,
-      sellBook,
-      targetVolumeBtc: best.maxExecutableBtc,
-      combinedLatencyMs: best.combinedLatencyMs,
-    });
+      const trade = this.walletService.executeTrade({
+        buyExchange: candidate.buyExchange,
+        sellExchange: candidate.sellExchange,
+        buyBook,
+        sellBook,
+        targetVolumeBtc: candidate.maxExecutableBtc,
+        combinedLatencyMs: candidate.combinedLatencyMs,
+      });
 
-    this.riskEngine.recordTrade(trade);
-    this.trades.unshift(trade);
-    this.lastExecutedOpportunityId = best.id;
-    this.lastExecutionTime = now;
+      this.riskEngine.recordTrade(trade);
+      this.trades.unshift(trade);
+      this.lastExecutedRoute = routeKey;
+      this.lastExecutionTime = now;
 
-    if (trade.status === 'rejected') {
-      this.opportunitiesRejected += 1;
-      best.status = 'rejected';
-      best.reason = trade.reason;
-    } else {
-      best.status = trade.status;
-      best.reason = trade.reason;
+      if (trade.status === 'rejected') {
+        this.opportunitiesRejected += 1;
+        candidate.status = 'rejected';
+        candidate.reason = trade.reason;
+        continue;
+      }
+
+      candidate.status = trade.status;
+      candidate.reason = trade.reason;
       this.updatePnlHistory(trade.netProfitUsd);
+      return;
     }
   }
 
@@ -157,7 +211,7 @@ export class AppOrchestrator {
     return {
       totalPnlUsd: Math.round(totalPnlUsd * 100) / 100,
       tradesExecuted: executedTrades.length,
-      opportunitiesDetected: this.opportunitiesDetected,
+      opportunitiesDetected: this.opportunities.length,
       opportunitiesRejected: this.opportunitiesRejected,
       winRate:
         executedTrades.length > 0

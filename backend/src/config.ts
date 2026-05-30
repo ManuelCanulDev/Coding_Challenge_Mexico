@@ -9,6 +9,10 @@ export const config = {
   pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? '1500', 10),
   symbol: process.env.SYMBOL ?? 'BTC/USDT',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  corsOrigins: (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://127.0.0.1:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   autoExecute: (process.env.AUTO_EXECUTE ?? 'true') === 'true',
   minNetProfitPct: parseFloat(process.env.MIN_NET_PROFIT_PCT ?? '0.02'),
   minVolumeBtc: parseFloat(process.env.MIN_VOLUME_BTC ?? '0.001'),

@@ -40,6 +40,62 @@ export interface ArbitrageOpportunity {
   reason: string;
   combinedLatencyMs: number;
   timestamp: number;
+  reality: RealityCheck;
+}
+
+export type RealityVerdict =
+  | 'actionable_prefunded'
+  | 'theoretical_edge'
+  | 'blocked_by_costs'
+  | 'dead_on_transfer';
+
+export interface CostBreakdownLine {
+  label: string;
+  amountUsd: number;
+  kind: 'gain' | 'cost' | 'subtotal' | 'total';
+}
+
+export interface RealityCheck {
+  verdict: RealityVerdict;
+  verdictLabel: string;
+  headline: string;
+  explanation: string;
+  transferFeeUsd: number;
+  transferMinutes: number;
+  prefundedNetUsd: number;
+  serialArbNetUsd: number;
+  costBreakdown: CostBreakdownLine[];
+}
+
+export type MarketRegime = 'efficient' | 'fragmented' | 'fragmented_demo';
+
+export interface MarketInsight {
+  regime: MarketRegime;
+  regimeLabel: string;
+  headline: string;
+  narrative: string;
+  recommendation: string;
+  efficiencyScore: number;
+  bestGrossSpreadUsd: number;
+  avgFeeDragUsd: number;
+  actionableCount: number;
+  blockedByCostsCount: number;
+  deadOnTransferCount: number;
+  avgDataLatencyMs: number;
+  exchangesOnline: number;
+}
+
+export interface OpportunityLogEntry {
+  id: string;
+  scanAt: number;
+  buyExchange: ExchangeId;
+  sellExchange: ExchangeId;
+  netProfitUsd: number;
+  netTransferUsd: number;
+  status: ArbitrageOpportunity['status'];
+  verdictLabel: string;
+  score: number;
+  demoMode: boolean;
 }
 
 export interface SimulatedTrade {
@@ -84,15 +140,29 @@ export interface CircuitBreakerState {
   remainingSeconds: number;
 }
 
+export interface RuntimeSettings {
+  demoMode: boolean;
+  autoExecute: boolean;
+  pollIntervalMs: number;
+  minNetProfitPct: number;
+  minVolumeBtc: number;
+  maxCombinedLatencyMs: number;
+  circuitBreakerThreshold: number;
+  circuitBreakerCooldownMs: number;
+}
+
 export interface AppState {
   botStatus: BotStatus;
   circuitBreaker: CircuitBreakerState;
+  settings: RuntimeSettings;
   orderBooks: NormalizedOrderBook[];
   opportunities: ArbitrageOpportunity[];
+  opportunityLog: OpportunityLogEntry[];
   trades: SimulatedTrade[];
   wallets: WalletBalance[];
   performance: PerformanceMetrics;
   pnlHistory: { timestamp: number; cumulativePnl: number }[];
+  marketInsight: MarketInsight;
   lastUpdated: number;
 }
 

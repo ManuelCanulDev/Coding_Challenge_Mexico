@@ -11,7 +11,7 @@ import {
   INITIAL_WALLETS,
 } from '../config.js';
 import {
-  calculateLatencyPenalty,
+  calculateNetProfitability,
   calculateWeightedAveragePrice,
 } from './slippageService.js';
 
@@ -65,6 +65,24 @@ export class WalletService {
     return Math.min(this.wallets[exchange].btc, bidLiquidity);
   }
 
+  resetWallets(): void {
+    this.wallets = {
+      binance: { ...INITIAL_WALLETS.binance },
+      kraken: { ...INITIAL_WALLETS.kraken },
+      coinbase: { ...INITIAL_WALLETS.coinbase },
+      okx: { ...INITIAL_WALLETS.okx },
+    };
+  }
+
+  replenishDemoWallets(): void {
+    for (const exchange of Object.keys(this.wallets) as ExchangeId[]) {
+      const wallet = this.wallets[exchange];
+      const initial = INITIAL_WALLETS[exchange];
+      if (wallet.fiat < initial.fiat * 0.25) wallet.fiat = initial.fiat;
+      if (wallet.btc < initial.btc * 0.25) wallet.btc = initial.btc;
+    }
+  }
+
   executeTrade(params: {
     buyExchange: ExchangeId;
     sellExchange: ExchangeId;
@@ -97,27 +115,37 @@ export class WalletService {
     }
 
     const volumeBtc = Math.round(maxVolume * 100000000) / 100000000;
-    const buyPrice = buySlippage.avgPrice;
-    const sellPrice = sellSlippage.avgPrice;
+    const execBuy = calculateWeightedAveragePrice(buyBook.asks, volumeBtc, 'buy');
+    const execSell = calculateWeightedAveragePrice(sellBook.bids, volumeBtc, 'sell');
+    const execBuyPrice = execBuy.avgPrice;
+    const execSellPrice = execSell.avgPrice;
 
-    const buyCost = volumeBtc * buyPrice;
-    const sellProceeds = volumeBtc * sellPrice;
+    const buyCost = volumeBtc * execBuyPrice;
+    const sellProceeds = volumeBtc * execSellPrice;
     const buyFee = buyCost * EXCHANGE_FEES[buyExchange];
     const sellFee = sellProceeds * EXCHANGE_FEES[sellExchange];
-    const feesUsd = buyFee + sellFee;
-    const grossProfitUsd = sellProceeds - buyCost;
-    const slippageUsd = buySlippage.slippageUsd + sellSlippage.slippageUsd;
-    const notional = buyCost;
-    const latencyPenaltyUsd = calculateLatencyPenalty(notional, combinedLatencyMs);
-    const netProfitUsd = grossProfitUsd - feesUsd - slippageUsd - latencyPenaltyUsd;
-    const netProfitPct = (netProfitUsd / notional) * 100;
 
-    if (!this.canAffordBuy(buyExchange, volumeBtc, buyPrice)) {
+    const buyPrice = buyBook.ask;
+    const sellPrice = sellBook.bid;
+    const slippageUsd = execBuy.slippageUsd + execSell.slippageUsd;
+    const profitability = calculateNetProfitability({
+      volumeBtc,
+      buyPrice,
+      sellPrice,
+      buyFeeRate: EXCHANGE_FEES[buyExchange],
+      sellFeeRate: EXCHANGE_FEES[sellExchange],
+      slippageUsd,
+      combinedLatencyMs,
+    });
+    const { grossProfitUsd, latencyPenaltyUsd, netProfitUsd, netProfitPct } = profitability;
+    const feesUsd = profitability.buyFeeUsd + profitability.sellFeeUsd;
+
+    if (!this.canAffordBuy(buyExchange, volumeBtc, execBuyPrice)) {
       return this.rejectedTrade({
         buyExchange,
         sellExchange,
-        buyPrice,
-        sellPrice,
+        buyPrice: execBuyPrice,
+        sellPrice: execSellPrice,
         reason: 'Insufficient fiat balance on buy exchange',
       });
     }
@@ -126,8 +154,8 @@ export class WalletService {
       return this.rejectedTrade({
         buyExchange,
         sellExchange,
-        buyPrice,
-        sellPrice,
+        buyPrice: execBuyPrice,
+        sellPrice: execSellPrice,
         reason: 'Insufficient BTC balance on sell exchange',
       });
     }
@@ -139,8 +167,8 @@ export class WalletService {
 
     const isPartial =
       volumeBtc < targetVolumeBtc * 0.99 ||
-      !buySlippage.sufficientLiquidity ||
-      !sellSlippage.sufficientLiquidity;
+      !execBuy.sufficientLiquidity ||
+      !execSell.sufficientLiquidity;
 
     return {
       id: randomUUID(),

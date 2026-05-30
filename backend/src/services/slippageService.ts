@@ -45,6 +45,71 @@ export function calculateLatencyPenalty(notionalUsd: number, combinedLatencyMs: 
   return notionalUsd * penaltyRate;
 }
 
+export interface NetProfitabilityResult {
+  notional: number;
+  buyFeeUsd: number;
+  sellFeeUsd: number;
+  grossProfitUsd: number;
+  slippageUsd: number;
+  latencyPenaltyUsd: number;
+  netProfitUsd: number;
+  netProfitPct: number;
+}
+
+/** Challenge formula: top-of-book prices + explicit slippage/latency deductions */
+export function calculateNetProfitability(params: {
+  volumeBtc: number;
+  buyPrice: number;
+  sellPrice: number;
+  buyFeeRate: number;
+  sellFeeRate: number;
+  slippageUsd: number;
+  combinedLatencyMs: number;
+}): NetProfitabilityResult {
+  const {
+    volumeBtc,
+    buyPrice,
+    sellPrice,
+    buyFeeRate,
+    sellFeeRate,
+    slippageUsd,
+    combinedLatencyMs,
+  } = params;
+
+  if (volumeBtc <= 0 || buyPrice <= 0) {
+    return {
+      notional: 0,
+      buyFeeUsd: 0,
+      sellFeeUsd: 0,
+      grossProfitUsd: 0,
+      slippageUsd: 0,
+      latencyPenaltyUsd: 0,
+      netProfitUsd: 0,
+      netProfitPct: 0,
+    };
+  }
+
+  const notional = volumeBtc * buyPrice;
+  const buyFeeUsd = notional * buyFeeRate;
+  const sellFeeUsd = volumeBtc * sellPrice * sellFeeRate;
+  const grossProfitUsd = (sellPrice - buyPrice) * volumeBtc;
+  const latencyPenaltyUsd = calculateLatencyPenalty(notional, combinedLatencyMs);
+  const netProfitUsd =
+    grossProfitUsd - buyFeeUsd - sellFeeUsd - slippageUsd - latencyPenaltyUsd;
+  const netProfitPct = (netProfitUsd / notional) * 100;
+
+  return {
+    notional,
+    buyFeeUsd,
+    sellFeeUsd,
+    grossProfitUsd,
+    slippageUsd,
+    latencyPenaltyUsd,
+    netProfitUsd,
+    netProfitPct,
+  };
+}
+
 export function calculateLiquidityScore(maxExecutableBtc: number): number {
   if (maxExecutableBtc >= 1) return 30;
   if (maxExecutableBtc >= 0.5) return 25;

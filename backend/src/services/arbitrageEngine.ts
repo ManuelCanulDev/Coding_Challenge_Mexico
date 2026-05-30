@@ -1,17 +1,18 @@
 import { randomUUID } from 'crypto';
 import type {
   ArbitrageOpportunity,
-  ExchangeId,
   NormalizedOrderBook,
 } from '../types/index.js';
 import { EXCHANGE_FEES } from '../config.js';
 import { WalletService } from './walletService.js';
+import { getRuntimeSettings } from './settingsService.js';
 import {
-  calculateLatencyPenalty,
+  calculateNetProfitability,
   calculateOpportunityScore,
   calculateWeightedAveragePrice,
   getRating,
 } from './slippageService.js';
+import { assessOpportunityReality } from './realityCheckService.js';
 
 export class ArbitrageEngine {
   constructor(private walletService: WalletService) {}
@@ -37,6 +38,7 @@ export class ArbitrageEngine {
     buyBook: NormalizedOrderBook,
     sellBook: NormalizedOrderBook,
   ): ArbitrageOpportunity {
+    const settings = getRuntimeSettings();
     const buyExchange = buyBook.exchange;
     const sellExchange = sellBook.exchange;
     const buyAsk = buyBook.ask;
@@ -55,26 +57,43 @@ export class ArbitrageEngine {
       bidLiquidity,
     );
 
-    const probeVolume = Math.max(0.001, Math.min(maxByBalance, 0.5));
-    const buySlippage = calculateWeightedAveragePrice(buyBook.asks, probeVolume, 'buy');
-    const sellSlippage = calculateWeightedAveragePrice(sellBook.bids, probeVolume, 'sell');
+    const probeVolume =
+      maxByBalance >= settings.minVolumeBtc
+        ? Math.max(settings.minVolumeBtc, Math.min(maxByBalance, 0.5))
+        : 0;
+    const probeBuy = calculateWeightedAveragePrice(buyBook.asks, probeVolume, 'buy');
+    const probeSell = calculateWeightedAveragePrice(sellBook.bids, probeVolume, 'sell');
 
     const maxExecutableBtc = Math.min(
-      buySlippage.filledBtc,
-      sellSlippage.filledBtc,
+      probeBuy.filledBtc,
+      probeSell.filledBtc,
       maxByBalance,
     );
 
     const volume = Math.max(maxExecutableBtc, 0);
-    const buyCost = volume * buySlippage.avgPrice;
-    const sellProceeds = volume * sellSlippage.avgPrice;
-    const buyFee = buyCost * EXCHANGE_FEES[buyExchange];
-    const sellFee = sellProceeds * EXCHANGE_FEES[sellExchange];
-    const slippageEstimate = buySlippage.slippageUsd + sellSlippage.slippageUsd;
-    const notional = buyCost || buyAsk;
-    const latencyPenalty = calculateLatencyPenalty(notional, combinedLatencyMs);
-    const netProfitUsd = (sellProceeds - buyCost) - buyFee - sellFee - slippageEstimate - latencyPenalty;
-    const netProfitPct = notional > 0 ? (netProfitUsd / notional) * 100 : 0;
+    const buySlippage = calculateWeightedAveragePrice(
+      buyBook.asks,
+      volume >= settings.minVolumeBtc ? volume : settings.minVolumeBtc,
+      'buy',
+    );
+    const sellSlippage = calculateWeightedAveragePrice(
+      sellBook.bids,
+      volume >= settings.minVolumeBtc ? volume : settings.minVolumeBtc,
+      'sell',
+    );
+    const slippageEstimate = volume > 0 ? buySlippage.slippageUsd + sellSlippage.slippageUsd : 0;
+
+    const profitability = calculateNetProfitability({
+      volumeBtc: volume,
+      buyPrice: buyAsk,
+      sellPrice: sellBid,
+      buyFeeRate: EXCHANGE_FEES[buyExchange],
+      sellFeeRate: EXCHANGE_FEES[sellExchange],
+      slippageUsd: slippageEstimate,
+      combinedLatencyMs,
+    });
+    const { buyFeeUsd: buyFee, sellFeeUsd: sellFee, latencyPenaltyUsd: latencyPenalty, netProfitUsd, netProfitPct } =
+      profitability;
 
     const riskPenalty = this.estimateRiskPenalty(netProfitPct, maxExecutableBtc, combinedLatencyMs);
     const score = calculateOpportunityScore(netProfitPct, maxExecutableBtc, combinedLatencyMs, riskPenalty);
@@ -93,17 +112,20 @@ export class ArbitrageEngine {
     let status: ArbitrageOpportunity['status'] = 'detected';
     let reason = 'Opportunity detected';
 
-    if (netProfitUsd > 0 && netProfitPct > 0.02) {
+    if (maxExecutableBtc < settings.minVolumeBtc) {
+      reason = `Volume ${maxExecutableBtc.toFixed(6)} BTC below minimum`;
+    } else if (combinedLatencyMs > effectiveLatencyLimit(settings)) {
+      reason = `Latency ${combinedLatencyMs}ms exceeds ${effectiveLatencyLimit(settings)}ms limit`;
+    } else if (netProfitUsd > 0 && netProfitPct > settings.minNetProfitPct) {
       status = 'executable';
       reason = 'Meets profit thresholds';
     } else if (netProfitUsd <= 0) {
       reason = 'Fees, slippage and latency exceed gross spread';
     } else {
-      reason = 'Net profit below 0.02% threshold';
+      reason = `Net profit below ${settings.minNetProfitPct}% threshold`;
     }
 
-    return {
-      id: randomUUID(),
+    const core = {
       buyExchange,
       sellExchange,
       buyAsk: Math.round(buyAsk * 100) / 100,
@@ -117,13 +139,19 @@ export class ArbitrageEngine {
       netProfitUsd: Math.round(netProfitUsd * 100) / 100,
       netProfitPct: Math.round(netProfitPct * 10000) / 10000,
       maxExecutableBtc: Math.round(maxExecutableBtc * 100000000) / 100000000,
-      confidenceScore,
-      score,
-      rating,
       status,
       reason,
       combinedLatencyMs,
+    };
+
+    return {
+      id: randomUUID(),
+      ...core,
+      confidenceScore,
+      score,
+      rating,
       timestamp: Date.now(),
+      reality: assessOpportunityReality(core),
     };
   }
 
@@ -138,4 +166,10 @@ export class ArbitrageEngine {
 
 function sumLiquidity(levels: [number, number][]): number {
   return levels.reduce((sum, [, amount]) => sum + amount, 0);
+}
+
+function effectiveLatencyLimit(settings: ReturnType<typeof getRuntimeSettings>): number {
+  return settings.demoMode
+    ? Math.max(settings.maxCombinedLatencyMs, 5000)
+    : settings.maxCombinedLatencyMs;
 }
