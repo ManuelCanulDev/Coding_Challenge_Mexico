@@ -17,8 +17,8 @@ function resolveWsUrl(): string {
   return `${protocol}//${window.location.hostname}:${backendPort}/ws`;
 }
 
-const WS_URL = resolveWsUrl();
 const RECONNECT_MS = 2000;
+const CONNECT_TIMEOUT_MS = 8000;
 
 const defaultState: AppState = {
   botStatus: 'Paused',
@@ -127,10 +127,22 @@ export function useWebSocketState() {
       }
 
       setWsStatus('connecting');
-      const ws = new WebSocket(WS_URL);
+      const wsUrl = resolveWsUrl();
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      const connectTimeout = setTimeout(() => {
+        if (!active || wsRef.current !== ws) return;
+        if (ws.readyState === WebSocket.CONNECTING) {
+          disposeSocket(ws);
+          if (wsRef.current === ws) wsRef.current = null;
+          setWsStatus('disconnected');
+          scheduleReconnect(connect);
+        }
+      }, CONNECT_TIMEOUT_MS);
+
       ws.onopen = () => {
+        clearTimeout(connectTimeout);
         if (!active || wsRef.current !== ws) return;
         setWsStatus('connected');
       };
@@ -180,12 +192,16 @@ export function useWebSocketState() {
       };
 
       ws.onerror = () => {
+        clearTimeout(connectTimeout);
         if (!active || wsRef.current !== ws) return;
         disposeSocket(ws);
         if (wsRef.current === ws) wsRef.current = null;
+        setWsStatus('disconnected');
+        scheduleReconnect(connect);
       };
 
       ws.onclose = () => {
+        clearTimeout(connectTimeout);
         if (wsRef.current === ws) wsRef.current = null;
         if (!active) return;
         setWsStatus('disconnected');

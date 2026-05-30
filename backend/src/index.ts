@@ -77,7 +77,7 @@ if (process.env.NODE_ENV === 'production') {
   );
   app.use(express.static(frontendDist));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
+    if (req.path.startsWith('/api') || req.path === '/ws') {
       next();
       return;
     }
