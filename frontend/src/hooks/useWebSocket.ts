@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { AppState, PersistedHistory, WsMessage } from '../types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AppState, PersistedHistory, RuntimeSettings, WsMessage } from '../types';
 import { getLastKnownDemoMode, loadHistory, mergeTrades, saveHistory, setLastKnownDemoMode } from '../utils/format';
 import { resolveApiBase, resolveWsUrl } from '../utils/transport';
 
@@ -59,62 +59,20 @@ const defaultState: AppState = {
 
 export type WsConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
-function mergeIncomingState(prev: AppState, payload: AppState): AppState {
-  const demoMode = payload.settings.demoMode;
-  const modeChanged = prev.settings.demoMode !== demoMode;
-
-  if (modeChanged) {
-    setLastKnownDemoMode(demoMode);
-    const nextState: AppState = {
-      ...payload,
-      trades: payload.trades ?? [],
-      pnlHistory:
-        payload.pnlHistory.length > 0
-          ? payload.pnlHistory
-          : [{ timestamp: Date.now(), cumulativePnl: 0 }],
-      opportunityLog: payload.opportunityLog ?? [],
-    };
-    saveHistory(
-      {
-        trades: nextState.trades.slice(0, 100),
-        pnlHistory: nextState.pnlHistory,
-        performance: nextState.performance,
-      },
-      demoMode,
-    );
-    return nextState;
-  }
-
-  const persisted = loadHistory<PersistedHistory>(demoMode);
-  const mergedTrades = mergeTrades(payload.trades, persisted?.trades ?? prev.trades);
-
-  const serverSessionEmpty =
-    payload.trades.length === 0 && (payload.pnlHistory.at(-1)?.cumulativePnl ?? 0) === 0;
-
-  const mergedPnl =
-    payload.pnlHistory.length > 1
-      ? payload.pnlHistory
-      : serverSessionEmpty
-        ? payload.pnlHistory
-        : persisted?.pnlHistory ?? prev.pnlHistory;
-
-  const nextState: AppState = {
-    ...payload,
-    trades: mergedTrades,
-    pnlHistory: mergedPnl,
-    opportunityLog: payload.opportunityLog ?? [],
-  };
-
-  saveHistory(
-    {
-      trades: mergedTrades.slice(0, 100),
-      pnlHistory: mergedPnl,
-      performance: nextState.performance,
+function createEmptySession(): Pick<AppState, 'trades' | 'pnlHistory' | 'performance' | 'opportunityLog'> {
+  return {
+    trades: [],
+    pnlHistory: [{ timestamp: Date.now(), cumulativePnl: 0 }],
+    performance: {
+      totalPnlUsd: 0,
+      tradesExecuted: 0,
+      opportunitiesDetected: 0,
+      opportunitiesRejected: 0,
+      winRate: 0,
+      avgProfitPerTrade: 0,
     },
-    demoMode,
-  );
-
-  return nextState;
+    opportunityLog: [],
+  };
 }
 
 export function useWebSocketState() {
@@ -135,6 +93,103 @@ export function useWebSocketState() {
   const [wsStatus, setWsStatus] = useState<WsConnectionStatus>('connecting');
   const wsRef = useRef<WebSocket | null>(null);
   const transportRef = useRef<'ws' | 'poll'>('ws');
+  const pendingDemoModeRef = useRef<boolean | null>(null);
+
+  const mergeIncomingState = useCallback((prev: AppState, payload: AppState): AppState => {
+    if (
+      pendingDemoModeRef.current !== null &&
+      payload.settings.demoMode !== pendingDemoModeRef.current
+    ) {
+      return prev;
+    }
+
+    if (
+      pendingDemoModeRef.current !== null &&
+      payload.settings.demoMode === pendingDemoModeRef.current
+    ) {
+      pendingDemoModeRef.current = null;
+    }
+
+    const demoMode = payload.settings.demoMode;
+    const modeChanged = prev.settings.demoMode !== demoMode;
+
+    if (modeChanged) {
+      setLastKnownDemoMode(demoMode);
+      const nextState: AppState = {
+        ...payload,
+        ...createEmptySession(),
+        settings: payload.settings,
+      };
+      saveHistory(
+        {
+          trades: [],
+          pnlHistory: nextState.pnlHistory,
+          performance: nextState.performance,
+        },
+        demoMode,
+      );
+      return nextState;
+    }
+
+    const persisted = loadHistory<PersistedHistory>(demoMode);
+    const mergedTrades = mergeTrades(payload.trades, persisted?.trades ?? prev.trades);
+
+    const serverSessionEmpty =
+      payload.trades.length === 0 && (payload.pnlHistory.at(-1)?.cumulativePnl ?? 0) === 0;
+
+    const mergedPnl =
+      payload.pnlHistory.length > 1
+        ? payload.pnlHistory
+        : serverSessionEmpty
+          ? payload.pnlHistory
+          : persisted?.pnlHistory ?? prev.pnlHistory;
+
+    const nextState: AppState = {
+      ...payload,
+      trades: mergedTrades,
+      pnlHistory: mergedPnl,
+      opportunityLog: payload.opportunityLog ?? [],
+    };
+
+    saveHistory(
+      {
+        trades: mergedTrades.slice(0, 100),
+        pnlHistory: mergedPnl,
+        performance: nextState.performance,
+      },
+      demoMode,
+    );
+
+    return nextState;
+  }, []);
+
+  const applySettingsSave = useCallback((updated: RuntimeSettings) => {
+    pendingDemoModeRef.current = updated.demoMode;
+    setLastKnownDemoMode(updated.demoMode);
+
+    setState((prev) => {
+      const modeChanged = prev.settings.demoMode !== updated.demoMode;
+      if (!modeChanged) {
+        return { ...prev, settings: updated };
+      }
+
+      const session = createEmptySession();
+      saveHistory(
+        {
+          trades: [],
+          pnlHistory: session.pnlHistory,
+          performance: session.performance,
+        },
+        updated.demoMode,
+      );
+
+      return {
+        ...prev,
+        settings: updated,
+        ...session,
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -270,7 +325,7 @@ export function useWebSocketState() {
         wsRef.current = null;
       }
     };
-  }, []);
+  }, [mergeIncomingState]);
 
-  return { state, wsStatus };
+  return { state, wsStatus, applySettingsSave };
 }

@@ -14,7 +14,7 @@ import { useWebSocketState } from './hooks/useWebSocket';
 import { getUiCopy } from './utils/copy';
 
 export default function App() {
-  const { state, wsStatus } = useWebSocketState();
+  const { state, wsStatus, applySettingsSave } = useWebSocketState();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const copy = useMemo(() => getUiCopy(state.settings.demoMode), [state.settings.demoMode]);
   const topOpportunity = state.opportunities[0] ?? null;
@@ -28,7 +28,7 @@ export default function App() {
         open={settingsOpen}
         settings={state.settings}
         onClose={() => setSettingsOpen(false)}
-        onSaved={() => {}}
+        onSaved={applySettingsSave}
       />
 
       <div className="relative mx-auto max-w-[1680px] px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
