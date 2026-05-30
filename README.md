@@ -2,11 +2,20 @@
 
 **Motor inteligente de arbitraje de Bitcoin en tiempo real**
 
-> *Cazando oportunidades de arbitraje de Bitcoin en tiempo real.*
+> **Demo en vivo:** *(añade aquí tu URL pública tras deploy en Coolify)*  
+> **Repositorio:** https://github.com/ManuelCanulDev/Coding_Challenge_Mexico
 
-Balam Xchange es una web app full-stack para hackathon que monitorea order books públicos de BTC en exchanges líderes, detecta divergencias cross-exchange, calcula rentabilidad neta considerando fees, slippage, liquidez y latencia, ejecuta trades **100% simulados** contra wallets virtuales y presenta todo en un dashboard en vivo.
+Balam Xchange es una web app full-stack que monitorea order books públicos de BTC, detecta arbitraje cross-exchange, calcula rentabilidad neta (fees, slippage, latencia), simula ejecución con wallets virtuales y expone un dashboard en vivo vía WebSocket.
 
-> **Solo simulación.** Sin trading real. Sin API keys privadas. Diseñado para evaluación técnica del challenge.
+> **Paper trading únicamente.** Sin órdenes reales. Sin API keys privadas.
+
+### Evaluar en 2 minutos (guía para jurado)
+
+1. Abre la URL desplegada → verifica indicador **Live** (verde) en el header.
+2. **Modo live** (`demoMode: false` en ⚙): barra **Acción: No operar** — mercado real eficiente; oportunidades `detected` con costos > spread.
+3. Activa **Modo demo** en ⚙ → en ~10 s: **Acción: Operar**, trades en historial, P&L sube.
+4. Revisa **Log de detecciones** (últimas 150) y columnas **Neto paper** vs **Neto transfer** (fees de retiro BTC).
+5. Cambia a live de nuevo → sesión se resetea (trades/P&L independientes por modo).
 
 ---
 
@@ -17,12 +26,13 @@ Bitcoin cotiza de forma simultánea en múltiples exchanges. Los precios bid/ask
 Balam Xchange implementa el ciclo completo de un motor de arbitraje simulado:
 
 1. **Recolección** de order books públicos vía CCXT (Binance, Kraken, Coinbase, OKX).
-2. **Detección** de oportunidades cuando `buyExchange.ask < sellExchange.bid`.
-3. **Evaluación** de rentabilidad neta con fees, slippage, latencia y balances simulados.
-4. **Ejecución simulada** con soporte de fills parciales y motor de riesgo.
-5. **Visualización** en tiempo real por WebSocket en un dashboard responsive.
+2. **Detección** cuando `buyExchange.ask < sellExchange.bid` en todos los pares.
+3. **Evaluación** de rentabilidad neta (fees, slippage, latencia) + **Veredicto Balam** (neto prefondeado vs neto con retiro BTC).
+4. **Ejecución simulada** con fills parciales, circuit breaker y priorización por score.
+5. **Log de detecciones** (ring buffer 150) + historial de trades y P&L por WebSocket.
+6. **Configuración runtime** en SQLite (`demoMode`, umbrales, auto-ejecutar) desde panel ⚙.
 
-El sistema demuestra cómo razonaría un desk de arbitraje en producción, sin mover capital real.
+**Diferenciador:** no solo detecta spreads — explica por qué el arbitraje serial (comprar → retirar BTC → vender) casi nunca es viable en la práctica.
 
 ---
 
@@ -66,9 +76,10 @@ Balam Xchange cumple ese objetivo de extremo a extremo: datos públicos → opor
 
 | Entorno | Estado |
 |---------|--------|
-| Local (npm workspaces) | ✅ Implementado |
-| Docker + Docker Compose | 🔜 Planificado |
-| Coolify | 🔜 Planificado (compatible con empaquetado Docker) |
+| Local (npm workspaces) | ✅ |
+| Docker + Docker Compose | ✅ (`docker compose up --build`) |
+| Coolify (Dockerfile) | ✅ Puerto `3001`, health `/health`, volumen `/app/backend/data` |
+| Railway / Render / Fly | ✅ Compatible (mismo contenedor) |
 
 ---
 
@@ -86,6 +97,9 @@ balam-xchange/
 │   │   │   ├── mockDataService.ts     # Fallback si falla un exchange
 │   │   │   ├── arbitrageEngine.ts     # Detección de oportunidades
 │   │   │   ├── slippageService.ts     # Slippage, latencia, score
+│   │   │   ├── realityCheckService.ts # Veredicto + withdrawal fees
+│   │   │   ├── opportunityLogService.ts # Log ring buffer (150)
+│   │   │   ├── settingsService.ts     # SQLite runtime config
 │   │   │   ├── walletService.ts       # Wallets y ejecución simulada
 │   │   │   ├── riskEngine.ts          # Validación y circuit breaker
 │   │   │   └── orchestrator.ts        # Polling + auto-ejecución
@@ -119,7 +133,7 @@ CCXT (APIs públicas)
     → Dashboard React
 ```
 
-**Decisión técnica:** HTTP (`PORT`) y WebSocket (`WS_PORT`) usan puertos separados en desarrollo para simplificar el debug. El empaquetado Docker futuro unificará ambos detrás de un reverse proxy.
+**Decisión técnica:** WebSocket comparte el puerto HTTP en la ruta `/ws`, simplificando CORS, deploy y Docker con un solo puerto expuesto.
 
 ---
 
@@ -162,7 +176,7 @@ Levanta backend y frontend en paralelo.
 |----------|-----|
 | Frontend | http://localhost:5173 |
 | Backend (HTTP) | http://localhost:3001 |
-| WebSocket | ws://localhost:3002 |
+| WebSocket | ws://localhost:3001/ws |
 
 ### Servicios individuales
 
@@ -188,59 +202,80 @@ cd backend && npm start   # API compilada en backend/dist
 
 ## 7. Docker / Coolify
 
-> **Estado actual:** no incluido en el repositorio. Planificado como mejora de deployment.
+El repositorio incluye `Dockerfile`, `docker-compose.yml` y `.env.coolify.example` para deployment en **un solo puerto** (HTTP + API + WebSocket `/ws` + dashboard estático).
 
-La ruta prevista es un `Dockerfile` + `docker-compose.yml` que:
-
-- Compile frontend y backend.
-- Sirva el dashboard estático y la API/WebSocket detrás de un solo puerto expuesto.
-- Sea desplegable en **Coolify** con variables de entorno inyectadas.
-
-**Comando objetivo (futuro):**
+### Local con Docker
 
 ```bash
 docker compose up --build
 ```
 
-**URL objetivo en producción (futuro):** http://localhost:4000
+App en http://localhost:3001
 
-Hasta entonces, usar la ejecución local descrita en la sección 6.
+### Deploy en Coolify (recomendado)
+
+1. **Nuevo recurso** → tipo **Application** → fuente **GitHub** → selecciona este repo.
+2. **Build pack:** Dockerfile (raíz del monorepo).
+3. **Puerto expuesto:** `3001` (debe coincidir con `PORT`).
+4. **Health check:** ruta `/health`, puerto `3001`.
+5. **Variables de entorno** (ver `.env.coolify.example`):
+
+   | Variable | Valor |
+   |----------|-------|
+   | `NODE_ENV` | `production` |
+   | `PORT` | `3001` |
+   | `CORS_ORIGIN` | `https://tu-dominio.coolify.io` (tu URL pública) |
+   | `DEMO_MODE` | `true` (semilla inicial; luego editable en ⚙) |
+   | `SETTINGS_DB_PATH` | `/app/backend/data/settings.sqlite` |
+
+6. **Almacenamiento persistente:** monta un volumen en `/app/backend/data` para conservar `settings.sqlite` entre redeploys.
+7. **Dominio:** asigna el FQDN en Coolify (HTTPS automático con proxy integrado).
+8. Tras el deploy, abre la URL → indicador **Live** verde → WebSocket en `wss://tu-dominio/ws` (same-origin, sin variables `VITE_*`).
+
+**Alternativa:** recurso **Docker Compose** apuntando al `docker-compose.yml` del repo (incluye volumen `balam-data`).
+
+### Railway / Render
+
+1. Conecta el repo de GitHub.
+2. Build: Dockerfile en la raíz (o `npm run build` + `node backend/dist/index.js`).
+3. Puerto: `3001` · `NODE_ENV=production`
+4. Variables: `PORT=3001`, `CORS_ORIGIN=https://tu-dominio.com`
+5. Ajustes runtime (`demoMode`, etc.) desde el panel ⚙ — persisten en SQLite si montas volumen en `/app/backend/data`.
+
+**Desarrollo en contenedor (perfil opcional):**
+
+```bash
+docker compose --profile dev up
+```
 
 ---
 
 ## 8. Variables de entorno
 
-### Backend (`backend/.env`)
+### Backend (`backend/.env`) — solo infraestructura
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `PORT` | `3001` | Puerto HTTP |
-| `WS_PORT` | `3002` | Puerto WebSocket |
-| `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido del frontend |
-| `POLL_INTERVAL_MS` | `1500` | Intervalo de polling |
-| `AUTO_EXECUTE` | `true` | Auto-ejecutar trades simulados |
-| `MIN_NET_PROFIT_PCT` | `0.02` | Beneficio neto mínimo (%) |
-| `MIN_VOLUME_BTC` | `0.001` | Volumen mínimo ejecutable |
-| `MAX_COMBINED_LATENCY_MS` | `2000` | Latencia combinada máxima |
-| `CIRCUIT_BREAKER_THRESHOLD` | `3` | Trades negativos antes de pausar |
-| `CIRCUIT_BREAKER_COOLDOWN_MS` | `60000` | Cooldown del circuit breaker (ms) |
-| `DEMO_MODE` | `true` | Offsets demo en bps (`false` = precios reales sin alterar) |
+| `PORT` | `3001` | Puerto HTTP + WebSocket (`/ws`) |
+| `CORS_ORIGIN` | `http://localhost:5173,...` | Orígenes CORS (coma-separados) |
+| `SETTINGS_DB_PATH` | *(auto)* | Ruta SQLite; en Coolify: `/app/backend/data/settings.sqlite` |
 
-Ejemplo:
+`demoMode`, `autoExecute`, umbrales de profit/volumen/latencia y circuit breaker viven en **SQLite** (`backend/data/settings.sqlite`). Se editan en el panel ⚙ o vía `PATCH /api/settings`. Ver `backend/.env.example` para semilla inicial opcional.
+
+Ejemplo mínimo:
 
 ```env
 PORT=3001
-WS_PORT=3002
-CORS_ORIGIN=http://localhost:5173
-DEMO_MODE=false
+CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
 ```
 
 ### Frontend (`frontend/.env`)
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `VITE_WS_URL` | `ws://localhost:3002` | Endpoint WebSocket |
-| `VITE_API_URL` | `http://localhost:3001` | Base URL REST (fallback) |
+| `VITE_WS_URL` | *(auto)* | Override WebSocket; en prod same-origin usa `wss://<host>/ws` |
+| `VITE_API_URL` | *(auto)* | En prod same-origin usa rutas relativas (`/api/...`) |
+| `VITE_BACKEND_PORT` | `3001` | Solo dev: puerto backend si frontend corre en otro host |
 
 **No se requieren API keys.** CCXT consume únicamente endpoints públicos.
 
@@ -417,21 +452,20 @@ Factores considerados: rentabilidad neta, volumen ejecutable, latencia y penaliz
 
 ## 17. Limitaciones actuales
 
-- **Solo simulación** — sin órdenes reales ni settlement.
-- **Sin APIs privadas** — order books públicos únicamente.
-- **Estado en memoria** — el backend pierde estado al reiniciar.
-- **USDT ≈ USD** — tratados como equivalentes en el MVP (sin capa FX).
-- **Polling REST cada 1.5 s** — no es arquitectura HFT ni WebSocket nativo de exchanges.
-- **Fallback mock** — si CCXT falla, se inyectan precios simulados (exchange `offline`).
-- **`DEMO_MODE`** — offsets en bps para demos cuando mercados reales son demasiado eficientes.
-- **Sin Docker/Coolify en repo** — deployment containerizado pendiente.
-- **Modelado simplificado** — sin costos de retiro, transferencias inter-exchange ni confirmaciones on-chain.
+- **Paper trading** — sin órdenes reales ni settlement on-chain.
+- **Sin APIs privadas** — order books públicos vía CCXT.
+- **Trades/P&L en memoria** — se pierden al reiniciar el backend (SQLite solo guarda settings).
+- **Log de detecciones** — últimas 150 entradas en memoria.
+- **USDT ≈ USD** — sin capa FX entre pares mixtos.
+- **Polling REST ~1.5 s** — no WebSocket nativo de exchanges (el track lo permite).
+- **Modo demo** — offsets en bps para demostrar flujo de ejecución cuando el mercado live es eficiente.
+- **Ejecución** usa modelo **capital prefondeado**; el **neto transfer** incluye withdrawal fees estimados por exchange.
 
 ---
 
 ## 18. Mejoras futuras
 
-- [ ] `Dockerfile` + `docker-compose.yml` para Coolify y puerto único
+- [x] Deploy **Coolify** (Dockerfile + compose + `.env.coolify.example`)
 - [ ] WebSocket feeds nativos por exchange
 - [ ] Base de datos persistente (PostgreSQL)
 - [ ] Backtesting con datos históricos
