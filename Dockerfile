@@ -8,7 +8,9 @@ COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
 
-RUN npm ci
+# Coolify puede inyectar NODE_ENV=production en build-time; forzar devDeps (tsc, vite).
+ENV NODE_ENV=development
+RUN npm ci --include=dev
 
 COPY . .
 

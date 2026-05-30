@@ -2,7 +2,7 @@
 
 **Motor inteligente de arbitraje de Bitcoin en tiempo real**
 
-> **Demo en vivo:** *(añade aquí tu URL pública tras deploy en Coolify)*  
+> **Demo en vivo:** https://balam-xchange.grupokamar.com.mx  
 > **Repositorio:** https://github.com/ManuelCanulDev/Coding_Challenge_Mexico
 
 Balam Xchange es una web app full-stack que monitorea order books públicos de BTC, detecta arbitraje cross-exchange, calcula rentabilidad neta (fees, slippage, latencia), simula ejecución con wallets virtuales y expone un dashboard en vivo vía WebSocket.
@@ -222,15 +222,17 @@ App en http://localhost:3001
 
    | Variable | Valor |
    |----------|-------|
-   | `NODE_ENV` | `production` |
+   | `NODE_ENV` | `production` (**solo Runtime**, no Buildtime) |
    | `PORT` | `3001` |
-   | `CORS_ORIGIN` | `https://tu-dominio.coolify.io` (tu URL pública) |
+   | `CORS_ORIGIN` | `https://balam-xchange.grupokamar.com.mx` |
    | `DEMO_MODE` | `true` (semilla inicial; luego editable en ⚙) |
    | `SETTINGS_DB_PATH` | `/app/backend/data/settings.sqlite` |
 
+   > Si `NODE_ENV=production` está marcado como **Available at Buildtime**, el build puede fallar con `tsc: not found`. Desmarca Buildtime o déjalo solo en Runtime.
+
 6. **Almacenamiento persistente:** monta un volumen en `/app/backend/data` para conservar `settings.sqlite` entre redeploys.
 7. **Dominio:** asigna el FQDN en Coolify (HTTPS automático con proxy integrado).
-8. Tras el deploy, abre la URL → indicador **Live** verde → WebSocket en `wss://tu-dominio/ws` (same-origin, sin variables `VITE_*`).
+8. Tras el deploy, abre la URL → indicador **Live** verde → WebSocket en `wss://balam-xchange.grupokamar.com.mx/ws` (same-origin, sin variables `VITE_*`).
 
 **Alternativa:** recurso **Docker Compose** apuntando al `docker-compose.yml` del repo (incluye volumen `balam-data`).
 
