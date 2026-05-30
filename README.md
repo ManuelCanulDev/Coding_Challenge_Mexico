@@ -478,7 +478,9 @@ Factores considerados: rentabilidad neta, volumen ejecutable, latencia y penaliz
 
 ## Autor
 
-Desarrollado para el **Bitcoin Arbitrage Hackathon Challenge**.
+**Manuel Canul** — [GitHub](https://github.com/ManuelCanulDev)
+
+Proyecto presentado en el **Coding Challenge Mexico** (Bitcoin Arbitrage Hackathon Challenge).
 
 ## Licencia
 
