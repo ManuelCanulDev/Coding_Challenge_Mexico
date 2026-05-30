@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppState, PersistedHistory, WsMessage } from '../types';
-import { getLastKnownDemoMode, loadHistory, mergeTrades, saveHistory } from '../utils/format';
+import { getLastKnownDemoMode, loadHistory, mergeTrades, saveHistory, setLastKnownDemoMode } from '../utils/format';
 import { resolveApiBase, resolveWsUrl } from '../utils/transport';
 
 const RECONNECT_MS = 2000;
@@ -62,17 +62,41 @@ export type WsConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 function mergeIncomingState(prev: AppState, payload: AppState): AppState {
   const demoMode = payload.settings.demoMode;
   const modeChanged = prev.settings.demoMode !== demoMode;
-  const persisted = modeChanged ? null : loadHistory<PersistedHistory>(demoMode);
 
-  const mergedTrades = modeChanged
-    ? payload.trades
-    : mergeTrades(payload.trades, persisted?.trades ?? prev.trades);
+  if (modeChanged) {
+    setLastKnownDemoMode(demoMode);
+    const nextState: AppState = {
+      ...payload,
+      trades: payload.trades ?? [],
+      pnlHistory:
+        payload.pnlHistory.length > 0
+          ? payload.pnlHistory
+          : [{ timestamp: Date.now(), cumulativePnl: 0 }],
+      opportunityLog: payload.opportunityLog ?? [],
+    };
+    saveHistory(
+      {
+        trades: nextState.trades.slice(0, 100),
+        pnlHistory: nextState.pnlHistory,
+        performance: nextState.performance,
+      },
+      demoMode,
+    );
+    return nextState;
+  }
 
-  const mergedPnl = modeChanged
-    ? payload.pnlHistory
-    : payload.pnlHistory.length > 1
+  const persisted = loadHistory<PersistedHistory>(demoMode);
+  const mergedTrades = mergeTrades(payload.trades, persisted?.trades ?? prev.trades);
+
+  const serverSessionEmpty =
+    payload.trades.length === 0 && (payload.pnlHistory.at(-1)?.cumulativePnl ?? 0) === 0;
+
+  const mergedPnl =
+    payload.pnlHistory.length > 1
       ? payload.pnlHistory
-      : persisted?.pnlHistory ?? prev.pnlHistory;
+      : serverSessionEmpty
+        ? payload.pnlHistory
+        : persisted?.pnlHistory ?? prev.pnlHistory;
 
   const nextState: AppState = {
     ...payload,

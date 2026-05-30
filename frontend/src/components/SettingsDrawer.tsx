@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { RuntimeSettings } from '../types';
 import { updateSettings } from '../api/settings';
+import { setLastKnownDemoMode } from '../utils/format';
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -16,13 +17,16 @@ export function SettingsDrawer({ open, settings, onClose, onSaved }: SettingsDra
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const wasOpenRef = useRef(false);
 
+  // Solo sincronizar al abrir el drawer — no en cada tick de WebSocket.
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setForm(settings);
       setError(null);
       setSaved(false);
     }
+    wasOpenRef.current = open;
   }, [open, settings]);
 
   useEffect(() => {
@@ -42,8 +46,11 @@ export function SettingsDrawer({ open, settings, onClose, onSaved }: SettingsDra
   const handleSave = async () => {
     setSaving(true);
     setError(null);
+    const payload = { ...form };
     try {
-      const updated = await updateSettings(form);
+      const updated = await updateSettings(payload);
+      setForm(updated);
+      setLastKnownDemoMode(updated.demoMode);
       onSaved(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
