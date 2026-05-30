@@ -5,6 +5,24 @@ import { getRuntimeSettings } from './settingsService.js';
 import { generateMockOrderBook } from './mockDataService.js';
 
 const exchangeInstances: Partial<Record<ExchangeId, Exchange>> = {};
+const warnedExchanges = new Set<string>();
+
+const BINANCE_DEPTH_URLS = [
+  process.env.BINANCE_DEPTH_URL,
+  'https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=10',
+  'https://api.binance.us/api/v3/depth?symbol=BTCUSDT&limit=10',
+].filter(Boolean) as string[];
+
+interface BinanceDepthResponse {
+  bids: [string, string][];
+  asks: [string, string][];
+}
+
+function warnOnce(exchangeId: ExchangeId, message: string): void {
+  if (warnedExchanges.has(exchangeId)) return;
+  warnedExchanges.add(exchangeId);
+  console.warn(`[OrderBook] ${exchangeId}: ${message}`);
+}
 
 function getExchangeInstance(exchangeId: ExchangeId): Exchange {
   if (!exchangeInstances[exchangeId]) {
@@ -15,6 +33,38 @@ function getExchangeInstance(exchangeId: ExchangeId): Exchange {
     });
   }
   return exchangeInstances[exchangeId]!;
+}
+
+async function fetchBinanceDepthDirect(): Promise<OrderBook> {
+  let lastError: Error | null = null;
+
+  for (const url of BINANCE_DEPTH_URLS) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) {
+        if (response.status === 451 || response.status === 403) {
+          lastError = new Error(`HTTP ${response.status} from ${new URL(url).hostname}`);
+          continue;
+        }
+        throw new Error(`HTTP ${response.status} from ${new URL(url).hostname}`);
+      }
+
+      const data = (await response.json()) as BinanceDepthResponse;
+      if (url.includes('binance.us')) {
+        warnOnce('binance', 'using Binance.US depth feed (global API geo-blocked on this host)');
+      }
+
+      return {
+        bids: data.bids.map(([price, amount]) => [Number(price), Number(amount)]),
+        asks: data.asks.map(([price, amount]) => [Number(price), Number(amount)]),
+        timestamp: Date.now(),
+      } as OrderBook;
+    } catch (error) {
+      lastError = error as Error;
+    }
+  }
+
+  throw lastError ?? new Error('Binance depth unavailable');
 }
 
 function toLevel(level: [unknown, unknown]): [number, number] {
@@ -62,13 +112,15 @@ function applyDemoSpread(book: NormalizedOrderBook): NormalizedOrderBook {
 export async function fetchOrderBook(exchangeId: ExchangeId): Promise<NormalizedOrderBook> {
   const start = Date.now();
   try {
-    const exchange = getExchangeInstance(exchangeId);
     const symbol = EXCHANGE_SYMBOLS[exchangeId];
-    const orderBook = await exchange.fetchOrderBook(symbol, config.orderBookDepth);
+    const orderBook =
+      exchangeId === 'binance'
+        ? await fetchBinanceDepthDirect()
+        : await getExchangeInstance(exchangeId).fetchOrderBook(symbol, config.orderBookDepth);
     const latencyMs = Date.now() - start;
     return applyDemoSpread(normalizeOrderBook(exchangeId, orderBook, latencyMs));
   } catch (error) {
-    console.warn(`[OrderBook] ${exchangeId} failed, using mock fallback:`, (error as Error).message);
+    warnOnce(exchangeId, `live feed failed, using mock fallback — ${(error as Error).message}`);
     const mock = generateMockOrderBook(exchangeId);
     mock.latencyMs = Date.now() - start;
     mock.status = 'offline';
