@@ -103,6 +103,35 @@ export function exchangeDotClass(exchange: string): string {
   }
 }
 
+export function formatStatusLabel(status: string): string {
+  switch (status) {
+    case 'executed':
+      return 'Ejecutado';
+    case 'executable':
+      return 'Ejecutable';
+    case 'detected':
+      return 'Detectado';
+    case 'rejected':
+      return 'Rechazado';
+    case 'partial':
+      return 'Parcial';
+    case 'online':
+      return 'En línea';
+    case 'offline':
+      return 'Desconectado';
+    case 'Active':
+      return 'Activo';
+    case 'Paused':
+      return 'Pausado';
+    default:
+      return status;
+  }
+}
+
+export function formatExchangeStatusLabel(status: string): string {
+  return formatStatusLabel(status);
+}
+
 export function statusBadgeClass(status: string): string {
   switch (status) {
     case 'executed':

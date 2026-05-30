@@ -48,7 +48,7 @@ function resolveDecision(state: AppState): Decision {
     return {
       action: 'No operar',
       tone: 'stop',
-      hint: 'Costos > spread',
+      hint: 'Costos superan el spread',
     };
   }
 
@@ -73,6 +73,9 @@ const toneStyles: Record<DecisionTone, string> = {
 export function DecisionBar({ state }: DecisionBarProps) {
   const decision = resolveDecision(state);
   const { marketInsight, settings } = state;
+  const showRegime =
+    marketInsight.regimeLabel.toLowerCase() !== decision.hint.toLowerCase() &&
+    !decision.hint.toLowerCase().includes(marketInsight.regimeLabel.toLowerCase());
 
   const stats = [
     { label: 'Viables', value: String(marketInsight.actionableCount) },
@@ -85,35 +88,43 @@ export function DecisionBar({ state }: DecisionBarProps) {
 
   return (
     <section className="panel mb-6 overflow-hidden">
-      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div className="flex min-w-0 items-center gap-4">
-          <div
-            className={`flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border sm:h-14 sm:w-28 sm:flex-row sm:gap-2 ${toneStyles[decision.tone]}`}
-          >
-            <span className="text-[10px] font-semibold uppercase tracking-wider opacity-70">Acción</span>
-            <span className="text-sm font-bold sm:text-base">{decision.action}</span>
-          </div>
+      <div className="flex flex-col gap-4 p-4 sm:p-5">
+        <div
+          className={`flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${toneStyles[decision.tone]}`}
+        >
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-white">{marketInsight.regimeLabel}</p>
-            <p className="truncate text-xs text-gray-500">{decision.hint}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">
+              Acción recomendada
+            </p>
+            <p className="mt-1 text-xl font-bold leading-tight sm:text-2xl">{decision.action}</p>
+          </div>
+          <div className="min-w-0 border-t border-white/10 pt-3 sm:border-t-0 sm:pt-0 sm:text-right">
+            {showRegime && (
+              <p className="text-sm font-medium text-white/90">{marketInsight.regimeLabel}</p>
+            )}
+            <p className={`text-xs opacity-75 ${showRegime ? 'mt-0.5' : 'text-sm font-medium text-white/90'}`}>
+              {decision.hint}
+            </p>
             {settings.demoMode && (
-              <span className="mt-1 inline-block text-[10px] font-semibold uppercase text-accent-gold">
+              <span className="mt-2 inline-block text-[10px] font-semibold uppercase text-accent-gold">
                 Demo
               </span>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 lg:gap-3">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-lg border border-white/[0.06] bg-surface-800/50 px-2 py-2 text-center sm:px-3"
+              className="min-w-0 rounded-lg border border-white/[0.06] bg-surface-800/50 px-2 py-2 text-center sm:px-3"
             >
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-500 sm:text-[10px]">
+              <p className="truncate text-[9px] font-semibold uppercase tracking-wider text-gray-500 sm:text-[10px]">
                 {stat.label}
               </p>
-              <p className="mono mt-0.5 text-xs font-semibold text-gray-200 sm:text-sm">{stat.value}</p>
+              <p className="mono mt-0.5 truncate text-[11px] font-semibold text-gray-200 sm:text-sm">
+                {stat.value}
+              </p>
             </div>
           ))}
         </div>

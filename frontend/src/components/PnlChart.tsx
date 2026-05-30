@@ -28,24 +28,24 @@ export function PnlChart({ data, subtitle }: PnlChartProps) {
   const gradientId = isPositive ? 'pnlGradientUp' : 'pnlGradientDown';
 
   return (
-    <section className="panel mb-8">
+    <section className="panel mb-8 overflow-hidden">
       <SectionHeader
         title="P&L acumulado"
         subtitle={subtitle}
         action={
-          <span className={`mono text-lg font-bold ${profitClass(latestPnl)}`}>
+          <span className={`mono block max-w-full truncate text-sm font-bold sm:text-lg ${profitClass(latestPnl)}`}>
             {formatUsd(latestPnl)}
           </span>
         }
       />
-      <div className="h-[240px] px-3 pb-4 pt-2 sm:h-[320px] sm:px-6 sm:pb-6">
+      <div className="h-[220px] min-w-0 px-2 pb-4 pt-2 sm:h-[320px] sm:px-6 sm:pb-6">
         {chartData.length <= 1 ? (
           <div className="empty-state h-full">
             <p className="text-sm text-gray-500">Sin trades aún</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 4, left: -8, bottom: 0 }}>
               <defs>
                 <linearGradient id="pnlGradientUp" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22c55e" stopOpacity={0.35} />
@@ -60,17 +60,18 @@ export function PnlChart({ data, subtitle }: PnlChartProps) {
               <XAxis
                 dataKey="time"
                 stroke="#4b5563"
-                fontSize={11}
+                fontSize={10}
                 tickLine={false}
                 axisLine={false}
+                minTickGap={32}
               />
               <YAxis
                 stroke="#4b5563"
-                fontSize={11}
+                fontSize={10}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value: number) => `$${value}`}
-                width={56}
+                tickFormatter={(value: number) => `$${value.toFixed(0)}`}
+                width={44}
               />
               <ReferenceLine y={0} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 4" />
               <Tooltip

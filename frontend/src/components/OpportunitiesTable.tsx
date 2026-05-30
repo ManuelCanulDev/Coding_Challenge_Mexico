@@ -3,6 +3,7 @@ import {
   capitalizeExchange,
   formatBtc,
   formatPct,
+  formatStatusLabel,
   formatUsd,
   profitClass,
   statusBadgeClass,
@@ -18,7 +19,7 @@ export function OpportunitiesTable({ opportunities }: OpportunitiesTableProps) {
   const visible = opportunities.slice(0, 15);
 
   return (
-    <section className="panel mb-6">
+    <section className="panel mb-6 overflow-hidden">
       <SectionHeader
         title="Oportunidades"
         action={
@@ -65,22 +66,28 @@ export function OpportunitiesTable({ opportunities }: OpportunitiesTableProps) {
                       opp.status === 'executable' ? 'border-l-2 border-l-jade-500 bg-jade-500/[0.03]' : ''
                     }
                   >
-                    <td className="text-sm font-medium text-white">
+                    <td className="max-w-[140px] truncate text-sm font-medium text-white">
                       {capitalizeExchange(opp.buyExchange)} → {capitalizeExchange(opp.sellExchange)}
                     </td>
-                    <td className={`mono font-semibold ${profitClass(opp.netProfitUsd)}`}>
+                    <td className={`mono whitespace-nowrap font-semibold ${profitClass(opp.netProfitUsd)}`}>
                       {formatUsd(opp.netProfitUsd)}
                     </td>
-                    <td className={`mono text-xs ${profitClass(opp.reality?.serialArbNetUsd ?? 0)}`}>
+                    <td className={`mono whitespace-nowrap text-xs ${profitClass(opp.reality?.serialArbNetUsd ?? 0)}`}>
                       {formatUsd(opp.reality?.serialArbNetUsd ?? 0)}
                     </td>
-                    <td className={`mono text-xs ${profitClass(opp.netProfitPct)}`}>
+                    <td className={`mono whitespace-nowrap text-xs ${profitClass(opp.netProfitPct)}`}>
                       {formatPct(opp.netProfitPct)}
                     </td>
-                    <td className="mono text-xs text-gray-400">{formatBtc(opp.maxExecutableBtc)}</td>
-                    <td className="text-xs text-jade-300/90">{opp.reality?.verdictLabel ?? '—'}</td>
+                    <td className="mono whitespace-nowrap text-xs text-gray-400">
+                      {formatBtc(opp.maxExecutableBtc)}
+                    </td>
+                    <td className="max-w-[120px] truncate text-xs text-jade-300/90">
+                      {opp.reality?.verdictLabel ?? '—'}
+                    </td>
                     <td>
-                      <span className={`badge ${statusBadgeClass(opp.status)}`}>{opp.status}</span>
+                      <span className={`badge ${statusBadgeClass(opp.status)}`}>
+                        {formatStatusLabel(opp.status)}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -98,36 +105,42 @@ function OpportunityCard({ opp }: { opp: ArbitrageOpportunity }) {
 
   return (
     <div
-      className={`rounded-xl border p-3 ${
+      className={`min-w-0 rounded-xl border p-3 ${
         isOk ? 'border-jade-500/30 bg-jade-500/[0.04]' : 'border-white/[0.06] bg-surface-800/40'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-white">
+        <p className="min-w-0 truncate text-sm font-medium text-white">
           {capitalizeExchange(opp.buyExchange)} → {capitalizeExchange(opp.sellExchange)}
         </p>
-        <span className={`badge shrink-0 ${statusBadgeClass(opp.status)}`}>{opp.status}</span>
+        <span className={`badge shrink-0 ${statusBadgeClass(opp.status)}`}>
+          {formatStatusLabel(opp.status)}
+        </span>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] text-gray-500">Paper</p>
-          <p className={`mono text-xs font-semibold ${profitClass(opp.netProfitUsd)}`}>
+          <p className={`mono truncate text-xs font-semibold ${profitClass(opp.netProfitUsd)}`}>
             {formatUsd(opp.netProfitUsd)}
           </p>
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] text-gray-500">Transfer</p>
-          <p className={`mono text-xs ${profitClass(opp.reality?.serialArbNetUsd ?? 0)}`}>
+          <p className={`mono truncate text-xs ${profitClass(opp.reality?.serialArbNetUsd ?? 0)}`}>
             {formatUsd(opp.reality?.serialArbNetUsd ?? 0)}
           </p>
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] text-gray-500">%</p>
-          <p className={`mono text-xs ${profitClass(opp.netProfitPct)}`}>{formatPct(opp.netProfitPct)}</p>
+          <p className={`mono truncate text-xs ${profitClass(opp.netProfitPct)}`}>
+            {formatPct(opp.netProfitPct)}
+          </p>
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] text-gray-500">Veredicto</p>
-          <p className="truncate text-[10px] font-medium text-gray-300">{opp.reality?.verdictLabel ?? '—'}</p>
+          <p className="truncate text-[10px] font-medium text-gray-300">
+            {opp.reality?.verdictLabel ?? '—'}
+          </p>
         </div>
       </div>
     </div>

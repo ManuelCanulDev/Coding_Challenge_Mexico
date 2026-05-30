@@ -62,7 +62,7 @@ body {
   }
 
   .panel-header {
-    @apply flex flex-col gap-1 border-b border-white/[0.06] px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-5;
+    @apply flex flex-wrap items-end justify-between gap-3 border-b border-white/[0.06] px-4 py-4 sm:px-6 sm:py-5;
   }
 
   .panel-title {
@@ -90,7 +90,11 @@ body {
   }
 
   .data-table {
-    @apply w-full min-w-[520px] text-sm;
+    @apply w-full min-w-0 text-sm;
+  }
+
+  .data-table-compact {
+    @apply w-full min-w-[480px] text-sm lg:min-w-[520px];
   }
 
   .data-table thead {
