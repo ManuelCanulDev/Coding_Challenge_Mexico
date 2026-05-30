@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  color-scheme: dark;
+  --brand-glow: rgba(16, 185, 129, 0.12);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #06080f;
+  color: #e5e7eb;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+@layer components {
+  .app-shell {
+    @apply relative min-h-screen overflow-x-hidden;
+  }
+
+  .app-bg {
+    @apply pointer-events-none fixed inset-0 -z-10;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 197, 94, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(212, 168, 83, 0.07), transparent),
+      radial-gradient(ellipse 50% 30% at 0% 100%, rgba(5, 46, 22, 0.35), transparent),
+      linear-gradient(180deg, #06080f 0%, #0a0e17 40%, #06080f 100%);
+  }
+
+  .app-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 20%, transparent 100%);
+  }
+
+  .panel {
+    @apply rounded-2xl border border-white/[0.07] bg-surface-850/90 shadow-panel backdrop-blur-md;
+  }
+
+  .panel-header {
+    @apply flex flex-col gap-1 border-b border-white/[0.06] px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-5;
+  }
+
+  .panel-title {
+    @apply text-base font-semibold tracking-tight text-white;
+  }
+
+  .panel-subtitle {
+    @apply text-sm text-gray-500;
+  }
+
+  .stat-card {
+    @apply panel relative overflow-hidden p-5 transition duration-300 hover:border-white/10;
+  }
+
+  .stat-card-highlight {
+    @apply stat-card border-brand-500/20 bg-gradient-to-br from-brand-500/10 via-surface-850/90 to-surface-850/90;
+  }
+
+  .exchange-card {
+    @apply relative overflow-hidden rounded-xl border border-white/[0.06] bg-surface-750/80 p-4 transition duration-300 hover:border-white/10 hover:bg-surface-700/60;
+  }
+
+  .table-wrap {
+    @apply overflow-x-auto;
+  }
+
+  .data-table {
+    @apply w-full min-w-[520px] text-sm;
+  }
+
+  .data-table thead {
+    @apply sticky top-0 z-10 bg-surface-800/95 backdrop-blur-sm;
+  }
+
+  .data-table th {
+    @apply border-b border-white/[0.06] px-4 py-3.5 text-left text-[11px] font-semibold uppercase tracking-widest text-gray-500;
+  }
+
+  .data-table td {
+    @apply border-b border-white/[0.04] px-4 py-3.5 text-gray-300;
+  }
+
+  .data-table tbody tr {
+    @apply transition-colors duration-150;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-white/[0.02];
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide;
+  }
+
+  .live-dot {
+    @apply h-2 w-2 rounded-full;
+  }
+
+  .live-dot-connected {
+    @apply bg-accent-green shadow-[0_0_8px_rgba(34,197,94,0.7)] animate-live-pulse;
+  }
+
+  .live-dot-connecting {
+    @apply bg-accent-yellow animate-pulse;
+  }
+
+  .live-dot-disconnected {
+    @apply bg-accent-red;
+  }
+
+  .metric-up {
+    @apply text-accent-green;
+  }
+
+  .metric-down {
+    @apply text-accent-red;
+  }
+
+  .metric-neutral {
+    @apply text-gray-400;
+  }
+
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-14 text-center text-gray-500;
+  }
+}
