@@ -287,15 +287,37 @@ CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
 
 ## 9. Capturas de pantalla
 
-Añadir capturas en `/screenshots` antes de la entrega:
+Capturas de la demo en producción: [balam-xchange.grupokamar.com.mx](https://balam-xchange.grupokamar.com.mx)
 
-![Vista general del dashboard](./screenshots/dashboard-overview.png)
+### Vista general (modo live)
 
-![Oportunidades en vivo](./screenshots/live-opportunities.png)
+Mercado eficiente: **No operar**, P&L en $0, mejor ruta absorbida por costos (fees + slippage + latencia).
 
-![Historial de trades y P&L](./screenshots/trade-history-pnl.png)
+![Vista general del dashboard — modo live](./screenshots/dashboard-overview.png)
 
-*(Directorio placeholder incluido — reemplazar con capturas reales de la demo.)*
+### Oportunidades y log (modo live)
+
+Tabla de rutas con veredicto *Absorbida por costos* y log de detecciones (150 eventos) con **Neto paper** vs **Neto transfer**.
+
+![Oportunidades en vivo y log de detecciones](./screenshots/live-opportunities.png)
+
+### Sesión demo (P&L y ejecución)
+
+Modo demo activo: **Operar**, 40 trades, P&L acumulado y ruta *Viable prefondeado* con desglose de costos.
+
+![Modo demo — P&L, trades y mejor ruta](./screenshots/trade-history-pnl.png)
+
+### Configuración runtime
+
+Panel ⚙ con `demoMode`, auto-ejecutar y umbrales — persistidos en SQLite.
+
+![Panel de configuración](./screenshots/settings-panel.png)
+
+### Vista móvil
+
+Layout responsive en teléfono (DecisionBar + métricas sin overflow).
+
+![Dashboard en móvil](./screenshots/mobile-dashboard.jpg)
 
 ---
 
