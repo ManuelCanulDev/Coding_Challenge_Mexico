@@ -13,17 +13,19 @@ import { SectionHeader } from './ui/SectionHeader';
 
 interface PnlChartProps {
   data: { timestamp: number; cumulativePnl: number }[];
+  totalPnlUsd: number;
+  sessionKey: string;
   subtitle?: string;
 }
 
-export function PnlChart({ data, subtitle }: PnlChartProps) {
+export function PnlChart({ data, totalPnlUsd, sessionKey, subtitle }: PnlChartProps) {
   const chartData = data.map((point) => ({
     ...point,
     time: formatTime(point.timestamp),
   }));
 
-  const latestPnl = data[data.length - 1]?.cumulativePnl ?? 0;
-  const isPositive = latestPnl >= 0;
+  const hasSessionActivity = data.length > 1;
+  const isPositive = totalPnlUsd >= 0;
   const strokeColor = isPositive ? '#22c55e' : '#f87171';
   const gradientId = isPositive ? 'pnlGradientUp' : 'pnlGradientDown';
 
@@ -33,18 +35,18 @@ export function PnlChart({ data, subtitle }: PnlChartProps) {
         title="P&L acumulado"
         subtitle={subtitle}
         action={
-          <span className={`mono block max-w-full truncate text-sm font-bold sm:text-lg ${profitClass(latestPnl)}`}>
-            {formatUsd(latestPnl)}
+          <span className={`mono block max-w-full truncate text-sm font-bold sm:text-lg ${profitClass(totalPnlUsd)}`}>
+            {formatUsd(totalPnlUsd)}
           </span>
         }
       />
       <div className="h-[220px] min-w-0 px-2 pb-4 pt-2 sm:h-[320px] sm:px-6 sm:pb-6">
-        {chartData.length <= 1 ? (
+        {!hasSessionActivity ? (
           <div className="empty-state h-full">
-            <p className="text-sm text-gray-500">Sin trades aún</p>
+            <p className="text-sm text-gray-500">Sin trades en esta sesión</p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" key={sessionKey}>
             <AreaChart data={chartData} margin={{ top: 8, right: 4, left: -8, bottom: 0 }}>
               <defs>
                 <linearGradient id="pnlGradientUp" x1="0" y1="0" x2="0" y2="1">

@@ -13,6 +13,8 @@ import { RiskEngine } from './riskEngine.js';
 import { settingsService } from './settingsService.js';
 import { buildMarketInsight } from './marketInsightService.js';
 import { OpportunityLogService } from './opportunityLogService.js';
+import { sessionPersistence } from './sessionPersistenceService.js';
+import { refreshFxRate, getUsdtUsdRate } from './fxService.js';
 
 type StateListener = (state: AppState) => void;
 
@@ -34,6 +36,8 @@ export class AppOrchestrator {
   private lastExecutionTime = 0;
 
   start(): void {
+    this.loadPersistedSession();
+    void refreshFxRate();
     void this.tick();
     this.restartPolling();
   }
@@ -70,6 +74,29 @@ export class AppOrchestrator {
     this.walletService.resetWallets();
     this.riskEngine.reset();
     this.opportunityLog.reset();
+    sessionPersistence.clear(settingsService.get().demoMode);
+  }
+
+  private loadPersistedSession(): void {
+    const snapshot = sessionPersistence.load(settingsService.get().demoMode);
+    if (!snapshot) return;
+
+    this.trades = snapshot.trades;
+    this.pnlHistory =
+      snapshot.pnlHistory.length > 0
+        ? snapshot.pnlHistory
+        : [{ timestamp: Date.now(), cumulativePnl: 0 }];
+    this.opportunitiesRejected = snapshot.opportunitiesRejected;
+    this.walletService.importSnapshot(snapshot.wallets);
+  }
+
+  private persistSession(): void {
+    sessionPersistence.save(settingsService.get().demoMode, {
+      trades: this.trades,
+      pnlHistory: this.pnlHistory,
+      opportunitiesRejected: this.opportunitiesRejected,
+      wallets: this.walletService.exportSnapshot(),
+    });
   }
 
   private restartPolling(): void {
@@ -110,6 +137,7 @@ export class AppOrchestrator {
         opportunities: this.opportunities,
         orderBooks: this.orderBooks,
         demoMode: settingsService.get().demoMode,
+        usdtUsdRate: getUsdtUsdRate(),
       }),
       lastUpdated: Date.now(),
     };
@@ -121,6 +149,7 @@ export class AppOrchestrator {
       if (settings.demoMode) {
         this.walletService.replenishDemoWallets();
       }
+      await refreshFxRate();
       this.orderBooks = await fetchAllOrderBooks();
       this.opportunities = this.arbitrageEngine.detectOpportunities(this.orderBooks);
       this.opportunityLog.appendFromScan(this.opportunities, settings.demoMode);
@@ -129,6 +158,7 @@ export class AppOrchestrator {
         this.tryExecuteOpportunities(settings);
       }
 
+      this.persistSession();
       this.emitState();
     } catch (error) {
       console.error('[Orchestrator] Tick failed:', error);

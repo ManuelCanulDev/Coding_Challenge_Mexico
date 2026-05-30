@@ -96,6 +96,7 @@ export interface MarketInsight {
   deadOnTransferCount: number;
   avgDataLatencyMs: number;
   exchangesOnline: number;
+  usdtUsdRate: number;
 }
 
 export interface SimulatedTrade {

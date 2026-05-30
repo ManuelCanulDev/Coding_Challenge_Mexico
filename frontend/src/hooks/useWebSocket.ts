@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AppState, PersistedHistory, RuntimeSettings, WsMessage } from '../types';
-import { getLastKnownDemoMode, loadHistory, mergeTrades, saveHistory, setLastKnownDemoMode } from '../utils/format';
+import type { AppState, PersistedHistory, PerformanceMetrics, RuntimeSettings, WsMessage } from '../types';
+import {
+  clearAllSessionHistory,
+  clearHistory,
+  getLastKnownDemoMode,
+  loadHistory,
+  mergeTrades,
+  saveHistory,
+  setLastKnownDemoMode,
+} from '../utils/format';
 import { resolveApiBase, resolveWsUrl } from '../utils/transport';
 
 const RECONNECT_MS = 2000;
@@ -53,6 +61,7 @@ const defaultState: AppState = {
     deadOnTransferCount: 0,
     avgDataLatencyMs: 0,
     exchangesOnline: 0,
+    usdtUsdRate: 1,
   },
   lastUpdated: Date.now(),
 };
@@ -75,6 +84,43 @@ function createEmptySession(): Pick<AppState, 'trades' | 'pnlHistory' | 'perform
   };
 }
 
+function isSessionEmpty(payload: Pick<AppState, 'trades' | 'pnlHistory'>): boolean {
+  return payload.trades.length === 0 && (payload.pnlHistory.at(-1)?.cumulativePnl ?? 0) === 0;
+}
+
+function buildStateWithSession(payload: AppState, session: ReturnType<typeof createEmptySession>): AppState {
+  return {
+    ...payload,
+    settings: payload.settings,
+    ...session,
+    performance: syncPerformanceWithSession(payload.performance, session.trades, session.pnlHistory),
+    opportunityLog: payload.opportunityLog ?? [],
+  };
+}
+function syncPerformanceWithSession(
+  performance: PerformanceMetrics,
+  trades: AppState['trades'],
+  pnlHistory: AppState['pnlHistory'],
+): PerformanceMetrics {
+  const executed = trades.filter((trade) => trade.status === 'executed' || trade.status === 'partial');
+  const totalPnlUsd = pnlHistory.at(-1)?.cumulativePnl ?? 0;
+  const winningTrades = executed.filter((trade) => trade.netProfitUsd > 0);
+
+  return {
+    ...performance,
+    totalPnlUsd: Math.round(totalPnlUsd * 100) / 100,
+    tradesExecuted: executed.length,
+    winRate:
+      executed.length > 0
+        ? Math.round((winningTrades.length / executed.length) * 10000) / 100
+        : 0,
+    avgProfitPerTrade:
+      executed.length > 0
+        ? Math.round((totalPnlUsd / executed.length) * 100) / 100
+        : 0,
+  };
+}
+
 export function useWebSocketState() {
   const [state, setState] = useState<AppState>(() => {
     const demoMode = getLastKnownDemoMode();
@@ -94,32 +140,38 @@ export function useWebSocketState() {
   const wsRef = useRef<WebSocket | null>(null);
   const transportRef = useRef<'ws' | 'poll'>('ws');
   const pendingDemoModeRef = useRef<boolean | null>(null);
+  const ignorePersistedSessionRef = useRef(false);
+  const [sessionEpoch, setSessionEpoch] = useState(0);
+
+  const bumpSessionEpoch = useCallback(() => {
+    setSessionEpoch((value) => value + 1);
+  }, []);
 
   const mergeIncomingState = useCallback((prev: AppState, payload: AppState): AppState => {
-    if (
-      pendingDemoModeRef.current !== null &&
-      payload.settings.demoMode !== pendingDemoModeRef.current
-    ) {
-      return prev;
-    }
+    const pendingMode = pendingDemoModeRef.current;
 
-    if (
-      pendingDemoModeRef.current !== null &&
-      payload.settings.demoMode === pendingDemoModeRef.current
-    ) {
-      pendingDemoModeRef.current = null;
+    if (pendingMode !== null && payload.settings.demoMode !== pendingMode) {
+      if (prev.settings.demoMode === pendingMode) {
+        return prev;
+      }
+      return {
+        ...prev,
+        settings: { ...prev.settings, demoMode: pendingMode },
+        ...createEmptySession(),
+      };
     }
 
     const demoMode = payload.settings.demoMode;
     const modeChanged = prev.settings.demoMode !== demoMode;
 
     if (modeChanged) {
+      ignorePersistedSessionRef.current = true;
+      pendingDemoModeRef.current = null;
       setLastKnownDemoMode(demoMode);
-      const nextState: AppState = {
-        ...payload,
-        ...createEmptySession(),
-        settings: payload.settings,
-      };
+      clearHistory(demoMode);
+      bumpSessionEpoch();
+      const session = createEmptySession();
+      const nextState = buildStateWithSession(payload, session);
       saveHistory(
         {
           trades: [],
@@ -131,24 +183,41 @@ export function useWebSocketState() {
       return nextState;
     }
 
-    const persisted = loadHistory<PersistedHistory>(demoMode);
-    const mergedTrades = mergeTrades(payload.trades, persisted?.trades ?? prev.trades);
+    const awaitingFreshSession =
+      ignorePersistedSessionRef.current || pendingDemoModeRef.current !== null;
 
-    const serverSessionEmpty =
-      payload.trades.length === 0 && (payload.pnlHistory.at(-1)?.cumulativePnl ?? 0) === 0;
+    if (awaitingFreshSession && !isSessionEmpty(payload)) {
+      return buildStateWithSession(payload, createEmptySession());
+    }
 
-    const mergedPnl =
-      payload.pnlHistory.length > 1
-        ? payload.pnlHistory
-        : serverSessionEmpty
-          ? payload.pnlHistory
-          : persisted?.pnlHistory ?? prev.pnlHistory;
+    if (awaitingFreshSession && isSessionEmpty(payload)) {
+      ignorePersistedSessionRef.current = false;
+      pendingDemoModeRef.current = null;
+    }
+
+    const usePersisted = !ignorePersistedSessionRef.current;
+    const persisted = usePersisted ? loadHistory<PersistedHistory>(demoMode) : null;
+    const mergedTrades = usePersisted
+      ? mergeTrades(payload.trades, persisted?.trades ?? prev.trades)
+      : payload.trades;
+
+    const serverSessionEmpty = isSessionEmpty(payload);
+
+    let mergedPnl: AppState['pnlHistory'];
+    if (serverSessionEmpty || !usePersisted) {
+      mergedPnl = payload.pnlHistory;
+    } else if (payload.pnlHistory.length > 1) {
+      mergedPnl = payload.pnlHistory;
+    } else {
+      mergedPnl = persisted?.pnlHistory ?? prev.pnlHistory;
+    }
 
     const nextState: AppState = {
       ...payload,
       trades: mergedTrades,
       pnlHistory: mergedPnl,
       opportunityLog: payload.opportunityLog ?? [],
+      performance: syncPerformanceWithSession(payload.performance, mergedTrades, mergedPnl),
     };
 
     saveHistory(
@@ -161,10 +230,11 @@ export function useWebSocketState() {
     );
 
     return nextState;
-  }, []);
+  }, [bumpSessionEpoch]);
 
   const applySettingsSave = useCallback((updated: RuntimeSettings) => {
     pendingDemoModeRef.current = updated.demoMode;
+    ignorePersistedSessionRef.current = true;
     setLastKnownDemoMode(updated.demoMode);
 
     setState((prev) => {
@@ -173,6 +243,8 @@ export function useWebSocketState() {
         return { ...prev, settings: updated };
       }
 
+      clearAllSessionHistory();
+      bumpSessionEpoch();
       const session = createEmptySession();
       saveHistory(
         {
@@ -189,7 +261,7 @@ export function useWebSocketState() {
         ...session,
       };
     });
-  }, []);
+  }, [bumpSessionEpoch]);
 
   useEffect(() => {
     let active = true;
@@ -327,5 +399,5 @@ export function useWebSocketState() {
     };
   }, [mergeIncomingState]);
 
-  return { state, wsStatus, applySettingsSave };
+  return { state, wsStatus, applySettingsSave, sessionEpoch };
 }

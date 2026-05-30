@@ -96,6 +96,8 @@ httpServer = app.listen(config.port, () => {
   console.log(`[HTTP] Server listening on http://localhost:${config.port}`);
   console.log(`[WS] WebSocket available at ws://localhost:${config.port}/ws`);
   console.log(`[Settings] SQLite store loaded (demoMode=${settingsService.get().demoMode})`);
+  console.log(`[OrderBook] STRICT_LIVE=${config.strictLive}`);
+  console.log(`[FX] USDT/USD fallback=${config.fxUsdtUsdRate}`);
 });
 
 httpServer.on('error', (error: NodeJS.ErrnoException) => {

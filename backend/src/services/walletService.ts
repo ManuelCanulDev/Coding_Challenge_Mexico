@@ -74,6 +74,24 @@ export class WalletService {
     };
   }
 
+  exportSnapshot(): Record<ExchangeId, { fiat: number; btc: number }> {
+    return (Object.keys(this.wallets) as ExchangeId[]).reduce(
+      (acc, exchange) => {
+        acc[exchange] = { ...this.wallets[exchange] };
+        return acc;
+      },
+      {} as Record<ExchangeId, { fiat: number; btc: number }>,
+    );
+  }
+
+  importSnapshot(snapshot: Record<ExchangeId, { fiat: number; btc: number }>): void {
+    for (const exchange of Object.keys(snapshot) as ExchangeId[]) {
+      if (this.wallets[exchange] && snapshot[exchange]) {
+        this.wallets[exchange] = { ...snapshot[exchange] };
+      }
+    }
+  }
+
   replenishDemoWallets(): void {
     for (const exchange of Object.keys(this.wallets) as ExchangeId[]) {
       const wallet = this.wallets[exchange];

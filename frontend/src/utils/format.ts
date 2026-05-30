@@ -197,6 +197,11 @@ export function clearHistory(demoMode: boolean): void {
   }
 }
 
+export function clearAllSessionHistory(): void {
+  clearHistory(true);
+  clearHistory(false);
+}
+
 export function mergeTrades<T extends { id: string; timestamp: number }>(
   incoming: T[],
   persisted: T[],

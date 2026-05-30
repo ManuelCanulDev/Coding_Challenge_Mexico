@@ -14,7 +14,7 @@ import { useWebSocketState } from './hooks/useWebSocket';
 import { getUiCopy } from './utils/copy';
 
 export default function App() {
-  const { state, wsStatus, applySettingsSave } = useWebSocketState();
+  const { state, wsStatus, applySettingsSave, sessionEpoch } = useWebSocketState();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const copy = useMemo(() => getUiCopy(state.settings.demoMode), [state.settings.demoMode]);
   const topOpportunity = state.opportunities[0] ?? null;
@@ -49,7 +49,12 @@ export default function App() {
 
         <div className="mb-6 grid gap-4 lg:grid-cols-5 lg:gap-6">
           <div className="lg:col-span-3">
-            <PnlChart data={state.pnlHistory} subtitle="" />
+            <PnlChart
+              data={state.pnlHistory}
+              totalPnlUsd={state.performance.totalPnlUsd}
+              sessionKey={`${state.settings.demoMode ? 'demo' : 'live'}-${sessionEpoch}`}
+              subtitle=""
+            />
           </div>
           <div className="lg:col-span-2">
             <TradesTable

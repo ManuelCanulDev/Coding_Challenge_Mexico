@@ -261,8 +261,10 @@ docker compose --profile dev up
 | `PORT` | `3001` | Puerto HTTP + WebSocket (`/ws`) |
 | `CORS_ORIGIN` | `http://localhost:5173,...` | Orígenes CORS (coma-separados) |
 | `SETTINGS_DB_PATH` | *(auto)* | Ruta SQLite; en Coolify: `/app/backend/data/settings.sqlite` |
+| `STRICT_LIVE` | `false` | `true` = sin fallback mock si falla un exchange (recomendado en prod) |
+| `FX_USDT_USD_RATE` | `1` | Fallback USDT→USD si falla Kraken (feed live ~60 s) |
 
-`demoMode`, `autoExecute`, umbrales de profit/volumen/latencia y circuit breaker viven en **SQLite** (`backend/data/settings.sqlite`). Se editan en el panel ⚙ o vía `PATCH /api/settings`. Ver `backend/.env.example` para semilla inicial opcional.
+`demoMode`, `autoExecute`, umbrales de profit/volumen/latencia y circuit breaker viven en **SQLite** (`backend/data/settings.sqlite`). **Trades, P&L y wallets** de cada modo (demo/live) también persisten en la misma base (tabla `session_state`) si montas volumen en `/app/backend/data`.
 
 Ejemplo mínimo:
 
@@ -392,7 +394,7 @@ Cada exchange mantiene balances independientes en memoria:
 
 **Al vender (exchange B):** debita BTC, acredita fiat (− fee).
 
-El dashboard muestra fiat, BTC y valor total estimado por exchange. Los balances se reinician al reiniciar el backend (estado en memoria).
+El dashboard muestra fiat, BTC y valor total estimado por exchange. Los balances persisten en SQLite junto con trades/P&L (por modo demo/live); se reinician al cambiar de modo o al borrar la sesión.
 
 ---
 
@@ -456,28 +458,34 @@ Factores considerados: rentabilidad neta, volumen ejecutable, latencia y penaliz
 
 - **Paper trading** — sin órdenes reales ni settlement on-chain.
 - **Sin APIs privadas** — order books públicos vía CCXT.
-- **Trades/P&L en memoria** — se pierden al reiniciar el backend (SQLite solo guarda settings).
-- **Log de detecciones** — últimas 150 entradas en memoria.
-- **USDT ≈ USD** — sin capa FX entre pares mixtos.
+- **Log de detecciones** — últimas 150 entradas en memoria (no persisten entre reinicios).
 - **Polling REST ~1.5 s** — no WebSocket nativo de exchanges (el track lo permite).
 - **Modo demo** — offsets en bps para demostrar flujo de ejecución cuando el mercado live es eficiente.
 - **Ejecución** usa modelo **capital prefondeado**; el **neto transfer** incluye withdrawal fees estimados por exchange.
+- **FX USDT/USD** — feed Kraken con fallback configurable (`FX_USDT_USD_RATE`); no modela spreads bid/ask del par fiat.
+
+**Persistencia (SQLite, volumen `/app/backend/data`):** settings, trades, curva P&L y balances simulados **por modo** (demo/live). Al **cambiar demo↔live** la sesión se reinicia (nuevo contador); al **reiniciar el contenedor** se recupera la sesión del modo activo.
+
+**Producción estricta:** con `STRICT_LIVE=true`, si un exchange falla queda `offline` (sin datos mock inventados).
 
 ---
 
 ## 18. Mejoras futuras
 
 - [x] Deploy **Coolify** (Dockerfile + compose + `.env.coolify.example`)
+- [x] **Persistencia de sesión** en SQLite (trades, P&L, wallets por modo demo/live)
+- [x] **FX USDT/USD** (Kraken ticker + fallback env)
+- [x] **Modo producción estricto** (`STRICT_LIVE` — sin fallback mock)
 - [ ] WebSocket feeds nativos por exchange
-- [ ] Base de datos persistente (PostgreSQL)
+- [ ] Base de datos PostgreSQL (multi-instancia / analytics)
 - [ ] Backtesting con datos históricos
 - [ ] Soporte multi-activo (ETH, SOL, …)
 - [ ] Arbitraje triangular
-- [ ] Modelado avanzado de latencia y FX USDT/USD
+- [ ] Modelado avanzado de latencia y FX (spread bid/ask, múltiples pares)
 - [ ] Replay histórico de mercado
 - [ ] Autenticación y multi-usuario
 - [ ] Perfiles de fees maker/taker por tier
-- [ ] Eliminar fallback mock en modo producción estricto
+- [ ] Persistir log de detecciones (150 entradas) en SQLite
 
 ---
 

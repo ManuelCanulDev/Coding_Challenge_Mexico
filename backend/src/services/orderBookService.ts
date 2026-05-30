@@ -7,6 +7,22 @@ import { generateMockOrderBook } from './mockDataService.js';
 const exchangeInstances: Partial<Record<ExchangeId, Exchange>> = {};
 const warnedExchanges = new Set<string>();
 
+function createOfflineBook(exchangeId: ExchangeId, latencyMs: number): NormalizedOrderBook {
+  return {
+    exchange: exchangeId,
+    symbol: EXCHANGE_SYMBOLS[exchangeId],
+    bid: 0,
+    ask: 0,
+    bidSize: 0,
+    askSize: 0,
+    bids: [],
+    asks: [],
+    timestamp: Date.now(),
+    latencyMs,
+    status: 'offline',
+  };
+}
+
 const BINANCE_DEPTH_URLS = [
   process.env.BINANCE_DEPTH_URL,
   'https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=10',
@@ -120,7 +136,13 @@ export async function fetchOrderBook(exchangeId: ExchangeId): Promise<Normalized
     const latencyMs = Date.now() - start;
     return applyDemoSpread(normalizeOrderBook(exchangeId, orderBook, latencyMs));
   } catch (error) {
-    warnOnce(exchangeId, `live feed failed, using mock fallback — ${(error as Error).message}`);
+    const message = (error as Error).message;
+    if (config.strictLive) {
+      warnOnce(exchangeId, `live feed failed, exchange marked offline (STRICT_LIVE) — ${message}`);
+      return createOfflineBook(exchangeId, Date.now() - start);
+    }
+
+    warnOnce(exchangeId, `live feed failed, using mock fallback — ${message}`);
     const mock = generateMockOrderBook(exchangeId);
     mock.latencyMs = Date.now() - start;
     mock.status = 'offline';

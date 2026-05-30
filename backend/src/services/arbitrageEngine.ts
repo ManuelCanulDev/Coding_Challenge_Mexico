@@ -1,11 +1,13 @@
 import { randomUUID } from 'crypto';
 import type {
   ArbitrageOpportunity,
+  ExchangeId,
   NormalizedOrderBook,
 } from '../types/index.js';
-import { EXCHANGE_FEES } from '../config.js';
+import { EXCHANGE_FEES, EXCHANGE_FIAT } from '../config.js';
 import { WalletService } from './walletService.js';
 import { getRuntimeSettings } from './settingsService.js';
+import { getUsdtUsdRate } from './fxService.js';
 import {
   calculateNetProfitability,
   calculateOpportunityScore,
@@ -24,7 +26,10 @@ export class ArbitrageEngine {
     for (const buyBook of onlineBooks) {
       for (const sellBook of onlineBooks) {
         if (buyBook.exchange === sellBook.exchange) continue;
-        if (buyBook.ask >= sellBook.bid) continue;
+
+        const buyAskUsd = priceToUsd(buyBook.ask, buyBook.exchange);
+        const sellBidUsd = priceToUsd(sellBook.bid, sellBook.exchange);
+        if (buyAskUsd >= sellBidUsd) continue;
 
         const opportunity = this.buildOpportunity(buyBook, sellBook);
         opportunities.push(opportunity);
@@ -41,8 +46,8 @@ export class ArbitrageEngine {
     const settings = getRuntimeSettings();
     const buyExchange = buyBook.exchange;
     const sellExchange = sellBook.exchange;
-    const buyAsk = buyBook.ask;
-    const sellBid = sellBook.bid;
+    const buyAsk = priceToUsd(buyBook.ask, buyExchange);
+    const sellBid = priceToUsd(sellBook.bid, sellExchange);
     const combinedLatencyMs = buyBook.latencyMs + sellBook.latencyMs;
 
     const grossSpreadUsd = sellBid - buyAsk;
@@ -81,7 +86,11 @@ export class ArbitrageEngine {
       volume >= settings.minVolumeBtc ? volume : settings.minVolumeBtc,
       'sell',
     );
-    const slippageEstimate = volume > 0 ? buySlippage.slippageUsd + sellSlippage.slippageUsd : 0;
+    const slippageEstimate =
+      volume > 0
+        ? slippageToUsd(buySlippage.slippageUsd, buyExchange) +
+          slippageToUsd(sellSlippage.slippageUsd, sellExchange)
+        : 0;
 
     const profitability = calculateNetProfitability({
       volumeBtc: volume,
@@ -166,6 +175,15 @@ export class ArbitrageEngine {
 
 function sumLiquidity(levels: [number, number][]): number {
   return levels.reduce((sum, [, amount]) => sum + amount, 0);
+}
+
+function priceToUsd(price: number, exchange: ExchangeId): number {
+  if (EXCHANGE_FIAT[exchange] === 'USD') return price;
+  return price * getUsdtUsdRate();
+}
+
+function slippageToUsd(slippageNative: number, exchange: ExchangeId): number {
+  return EXCHANGE_FIAT[exchange] === 'USDT' ? slippageNative * getUsdtUsdRate() : slippageNative;
 }
 
 function effectiveLatencyLimit(settings: ReturnType<typeof getRuntimeSettings>): number {

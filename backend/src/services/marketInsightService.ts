@@ -8,8 +8,9 @@ export function buildMarketInsight(params: {
   opportunities: ArbitrageOpportunity[];
   orderBooks: NormalizedOrderBook[];
   demoMode: boolean;
+  usdtUsdRate: number;
 }): MarketInsight {
-  const { opportunities, orderBooks, demoMode } = params;
+  const { opportunities, orderBooks, demoMode, usdtUsdRate } = params;
   const online = orderBooks.filter((book) => book.status === 'online');
   const avgLatency =
     online.length > 0
@@ -88,5 +89,6 @@ export function buildMarketInsight(params: {
     deadOnTransferCount: deadTransfer.length,
     avgDataLatencyMs: Math.round(avgLatency),
     exchangesOnline: online.length,
+    usdtUsdRate: round2(usdtUsdRate),
   };
 }

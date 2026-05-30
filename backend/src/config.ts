@@ -21,6 +21,10 @@ export const config = {
   circuitBreakerCooldownMs: parseInt(process.env.CIRCUIT_BREAKER_COOLDOWN_MS ?? '60000', 10),
   orderBookDepth: 10,
   demoMode: (process.env.DEMO_MODE ?? 'true') === 'true',
+  /** Sin fallback mock cuando un exchange falla (recomendado en producción). */
+  strictLive: (process.env.STRICT_LIVE ?? 'false') === 'true',
+  /** Fallback USDT→USD si falla el feed live (Kraken). */
+  fxUsdtUsdRate: parseFloat(process.env.FX_USDT_USD_RATE ?? '1'),
 };
 
 /** Small per-exchange offsets (bps) to surface demo arbitrage on efficient markets */

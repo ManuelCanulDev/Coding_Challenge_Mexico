@@ -10,6 +10,8 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
       DEMO_MODE: ${DEMO_MODE:-true}
       SETTINGS_DB_PATH: /app/backend/data/settings.sqlite
+      STRICT_LIVE: ${STRICT_LIVE:-true}
+      FX_USDT_USD_RATE: ${FX_USDT_USD_RATE:-1}
     volumes:
       - balam-data:/app/backend/data
     healthcheck:
