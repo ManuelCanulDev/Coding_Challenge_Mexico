@@ -117,10 +117,11 @@ export class SettingsService {
   }
 }
 
-const dbPath = path.join(
+const defaultDbPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../data/settings.sqlite',
 );
+const dbPath = process.env.SETTINGS_DB_PATH ?? defaultDbPath;
 
 export const settingsService = new SettingsService(dbPath);
 
