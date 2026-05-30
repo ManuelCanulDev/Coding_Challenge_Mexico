@@ -1,12 +1,10 @@
 import type { RuntimeSettings } from '../types';
-
-const API_URL =
-  import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:3001');
+import { resolveApiBase } from '../utils/transport';
 
 export async function updateSettings(
   partial: Partial<RuntimeSettings>,
 ): Promise<RuntimeSettings> {
-  const response = await fetch(`${API_URL}/api/settings`, {
+  const response = await fetch(`${resolveApiBase()}/api/settings`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(partial),

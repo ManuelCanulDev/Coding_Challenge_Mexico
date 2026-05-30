@@ -1,24 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppState, PersistedHistory, WsMessage } from '../types';
 import { getLastKnownDemoMode, loadHistory, mergeTrades, saveHistory } from '../utils/format';
-
-function resolveWsUrl(): string {
-  if (import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL;
-  }
-  if (typeof window === 'undefined') {
-    return 'ws://localhost:3001/ws';
-  }
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  if (import.meta.env.PROD) {
-    return `${protocol}//${window.location.host}/ws`;
-  }
-  const backendPort = import.meta.env.VITE_BACKEND_PORT ?? '3001';
-  return `${protocol}//${window.location.hostname}:${backendPort}/ws`;
-}
+import { resolveApiBase, resolveWsUrl } from '../utils/transport';
 
 const RECONNECT_MS = 2000;
 const CONNECT_TIMEOUT_MS = 8000;
+const POLL_MS = 2000;
 
 const defaultState: AppState = {
   botStatus: 'Paused',
@@ -72,6 +59,40 @@ const defaultState: AppState = {
 
 export type WsConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
+function mergeIncomingState(prev: AppState, payload: AppState): AppState {
+  const demoMode = payload.settings.demoMode;
+  const modeChanged = prev.settings.demoMode !== demoMode;
+  const persisted = modeChanged ? null : loadHistory<PersistedHistory>(demoMode);
+
+  const mergedTrades = modeChanged
+    ? payload.trades
+    : mergeTrades(payload.trades, persisted?.trades ?? prev.trades);
+
+  const mergedPnl = modeChanged
+    ? payload.pnlHistory
+    : payload.pnlHistory.length > 1
+      ? payload.pnlHistory
+      : persisted?.pnlHistory ?? prev.pnlHistory;
+
+  const nextState: AppState = {
+    ...payload,
+    trades: mergedTrades,
+    pnlHistory: mergedPnl,
+    opportunityLog: payload.opportunityLog ?? [],
+  };
+
+  saveHistory(
+    {
+      trades: mergedTrades.slice(0, 100),
+      pnlHistory: mergedPnl,
+      performance: nextState.performance,
+    },
+    demoMode,
+  );
+
+  return nextState;
+}
+
 export function useWebSocketState() {
   const [state, setState] = useState<AppState>(() => {
     const demoMode = getLastKnownDemoMode();
@@ -89,15 +110,24 @@ export function useWebSocketState() {
   });
   const [wsStatus, setWsStatus] = useState<WsConnectionStatus>('connecting');
   const wsRef = useRef<WebSocket | null>(null);
+  const transportRef = useRef<'ws' | 'poll'>('ws');
 
   useEffect(() => {
     let active = true;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     function clearReconnectTimer(): void {
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
+      }
+    }
+
+    function clearPollTimer(): void {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
       }
     }
 
@@ -116,8 +146,36 @@ export function useWebSocketState() {
       reconnectTimer = setTimeout(connect, RECONNECT_MS);
     }
 
+    async function pollState(): Promise<void> {
+      if (!active || transportRef.current !== 'poll') return;
+      try {
+        const response = await fetch(`${resolveApiBase()}/api/state`);
+        if (!response.ok) return;
+        const payload = (await response.json()) as AppState;
+        if (!active || transportRef.current !== 'poll') return;
+        setState((prev) => mergeIncomingState(prev, payload));
+        setWsStatus('connected');
+      } catch {
+        if (active && transportRef.current === 'poll') {
+          setWsStatus('disconnected');
+        }
+      }
+    }
+
+    function startPollingFallback(): void {
+      if (transportRef.current === 'poll') return;
+      transportRef.current = 'poll';
+      if (wsRef.current) {
+        disposeSocket(wsRef.current);
+        wsRef.current = null;
+      }
+      clearReconnectTimer();
+      void pollState();
+      pollTimer = setInterval(pollState, POLL_MS);
+    }
+
     function connect(): void {
-      if (!active) return;
+      if (!active || transportRef.current === 'poll') return;
       if (wsRef.current?.readyState === WebSocket.OPEN) return;
       if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
@@ -132,18 +190,19 @@ export function useWebSocketState() {
       wsRef.current = ws;
 
       const connectTimeout = setTimeout(() => {
-        if (!active || wsRef.current !== ws) return;
+        if (!active || wsRef.current !== ws || transportRef.current === 'poll') return;
         if (ws.readyState === WebSocket.CONNECTING) {
           disposeSocket(ws);
           if (wsRef.current === ws) wsRef.current = null;
-          setWsStatus('disconnected');
-          scheduleReconnect(connect);
+          startPollingFallback();
         }
       }, CONNECT_TIMEOUT_MS);
 
       ws.onopen = () => {
         clearTimeout(connectTimeout);
         if (!active || wsRef.current !== ws) return;
+        transportRef.current = 'ws';
+        clearPollTimer();
         setWsStatus('connected');
       };
 
@@ -152,39 +211,7 @@ export function useWebSocketState() {
         try {
           const message = JSON.parse(event.data as string) as WsMessage;
           if (message.type === 'state' && message.payload) {
-            setState((prev) => {
-              const demoMode = message.payload!.settings.demoMode;
-              const modeChanged = prev.settings.demoMode !== demoMode;
-              const persisted = modeChanged ? null : loadHistory<PersistedHistory>(demoMode);
-
-              const mergedTrades = modeChanged
-                ? message.payload!.trades
-                : mergeTrades(message.payload!.trades, persisted?.trades ?? prev.trades);
-
-              const mergedPnl = modeChanged
-                ? message.payload!.pnlHistory
-                : message.payload!.pnlHistory.length > 1
-                  ? message.payload!.pnlHistory
-                  : persisted?.pnlHistory ?? prev.pnlHistory;
-
-            const nextState: AppState = {
-              ...message.payload!,
-              trades: mergedTrades,
-              pnlHistory: mergedPnl,
-              opportunityLog: message.payload!.opportunityLog ?? [],
-            };
-
-              saveHistory(
-                {
-                  trades: mergedTrades.slice(0, 100),
-                  pnlHistory: mergedPnl,
-                  performance: nextState.performance,
-                },
-                demoMode,
-              );
-
-              return nextState;
-            });
+            setState((prev) => mergeIncomingState(prev, message.payload!));
           }
         } catch {
           // Ignore malformed messages
@@ -193,17 +220,16 @@ export function useWebSocketState() {
 
       ws.onerror = () => {
         clearTimeout(connectTimeout);
-        if (!active || wsRef.current !== ws) return;
+        if (!active || wsRef.current !== ws || transportRef.current === 'poll') return;
         disposeSocket(ws);
         if (wsRef.current === ws) wsRef.current = null;
-        setWsStatus('disconnected');
-        scheduleReconnect(connect);
+        startPollingFallback();
       };
 
       ws.onclose = () => {
         clearTimeout(connectTimeout);
         if (wsRef.current === ws) wsRef.current = null;
-        if (!active) return;
+        if (!active || transportRef.current === 'poll') return;
         setWsStatus('disconnected');
         scheduleReconnect(connect);
       };
@@ -214,6 +240,7 @@ export function useWebSocketState() {
     return () => {
       active = false;
       clearReconnectTimer();
+      clearPollTimer();
       if (wsRef.current) {
         disposeSocket(wsRef.current);
         wsRef.current = null;
