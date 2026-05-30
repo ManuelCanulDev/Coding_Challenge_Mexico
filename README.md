@@ -476,53 +476,6 @@ Factores considerados: rentabilidad neta, volumen ejecutable, latencia y penaliz
 
 ---
 
-## 17. Limitaciones actuales
-
-- **Paper trading** — sin órdenes reales ni settlement on-chain.
-- **Sin APIs privadas** — order books públicos vía CCXT.
-- **Log de detecciones** — últimas 150 entradas en memoria (no persisten entre reinicios).
-- **Polling REST ~1.5 s** — no WebSocket nativo de exchanges (el track lo permite).
-- **Modo demo** — offsets en bps para demostrar flujo de ejecución cuando el mercado live es eficiente.
-- **Ejecución** usa modelo **capital prefondeado**; el **neto transfer** incluye withdrawal fees estimados por exchange.
-- **FX USDT/USD** — feed Kraken con fallback configurable (`FX_USDT_USD_RATE`); no modela spreads bid/ask del par fiat.
-
-**Persistencia (SQLite, volumen `/app/backend/data`):** settings, trades, curva P&L y balances simulados **por modo** (demo/live). Al **cambiar demo↔live** la sesión se reinicia (nuevo contador); al **reiniciar el contenedor** se recupera la sesión del modo activo.
-
-**Producción estricta:** con `STRICT_LIVE=true`, si un exchange falla queda `offline` (sin datos mock inventados).
-
----
-
-## 18. Mejoras futuras
-
-- [x] Deploy **Coolify** (Dockerfile + compose + `.env.coolify.example`)
-- [x] **Persistencia de sesión** en SQLite (trades, P&L, wallets por modo demo/live)
-- [x] **FX USDT/USD** (Kraken ticker + fallback env)
-- [x] **Modo producción estricto** (`STRICT_LIVE` — sin fallback mock)
-- [ ] WebSocket feeds nativos por exchange
-- [ ] Base de datos PostgreSQL (multi-instancia / analytics)
-- [ ] Backtesting con datos históricos
-- [ ] Soporte multi-activo (ETH, SOL, …)
-- [ ] Arbitraje triangular
-- [ ] Modelado avanzado de latencia y FX (spread bid/ask, múltiples pares)
-- [ ] Replay histórico de mercado
-- [ ] Autenticación y multi-usuario
-- [ ] Perfiles de fees maker/taker por tier
-- [ ] Persistir log de detecciones (150 entradas) en SQLite
-
----
-
-## 19. Disclaimer
-
-Balam Xchange es un **proyecto educativo para hackathon**. Demuestra análisis de mercado, modelado de arbitraje y simulación con controles de riesgo.
-
-- **No es asesoría financiera.**
-- **No es un producto de trading.**
-- **No ejecuta operaciones reales.**
-
-No utilices este software para operar capital real sin revisión profesional, cumplimiento regulatorio y infraestructura de producción adecuada.
-
----
-
 ## Autor
 
 Desarrollado para el **Bitcoin Arbitrage Hackathon Challenge**.
