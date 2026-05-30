@@ -1,176 +1,298 @@
-# Arbiter BTC
+# Balam Xchange
 
-**Real-Time Bitcoin Arbitrage Intelligence Engine**
+**Motor inteligente de arbitraje de Bitcoin en tiempo real**
 
-Arbiter BTC is a full-stack hackathon application that monitors public Bitcoin order books across major exchanges, detects cross-exchange arbitrage opportunities in real time, estimates net profitability after trading costs, and executes **fully simulated** trades against virtual wallets—all streamed to a professional live dashboard.
+> *Cazando oportunidades de arbitraje de Bitcoin en tiempo real.*
 
-> **Simulation only.** No real orders. No private API keys. Built for technical evaluation, not live trading.
+Balam Xchange es una web app full-stack para hackathon que monitorea order books públicos de BTC en exchanges líderes, detecta divergencias cross-exchange, calcula rentabilidad neta considerando fees, slippage, liquidez y latencia, ejecuta trades **100% simulados** contra wallets virtuales y presenta todo en un dashboard en vivo.
 
----
-
-## What It Does
-
-Bitcoin trades simultaneously on many venues. Bid/ask prices are not perfectly aligned: for brief windows, it can be cheaper to buy BTC on Exchange A and sell on Exchange B than to trade on a single venue. Capturing that edge in production requires fast market data, fee-aware math, liquidity checks, and strict risk controls.
-
-**Arbiter BTC** solves the *analysis and decision* layer of that problem for a hackathon MVP:
-
-1. Polls public BTC order books from **Binance, Kraken, Coinbase, and OKX** via [CCXT](https://github.com/ccxt/ccxt).
-2. Compares every exchange pair and flags opportunities where **`buyExchange.ask < sellExchange.bid`**.
-3. Computes **net profit** after exchange fees, slippage (top 10 book levels), and a latency penalty.
-4. Simulates wallet balances, partial fills, and trade history.
-5. Streams unified state to the frontend over **WebSocket** for a responsive operator dashboard.
-
-The system demonstrates how a production arbitrage desk would *think*—without moving real capital.
+> **Solo simulación.** Sin trading real. Sin API keys privadas. Diseñado para evaluación técnica del challenge.
 
 ---
 
-## Challenge Objective
+## 1. Descripción del proyecto
 
-The Bitcoin Arbitrage Hackathon Challenge asks teams to build a system that:
+Bitcoin cotiza de forma simultánea en múltiples exchanges. Los precios bid/ask no están perfectamente alineados: en ventanas breves puede ser más barato comprar BTC en un venue y venderlo en otro que operar en un solo mercado.
 
-- Monitors BTC prices across multiple exchanges.
-- Detects price divergences that could theoretically be arbitraged.
-- Models whether those divergences remain profitable after costs.
-- Presents findings clearly for technical review.
+Balam Xchange implementa el ciclo completo de un motor de arbitraje simulado:
 
-Arbiter BTC addresses this end-to-end: from raw public market data to scored opportunities, simulated execution, P&L tracking, and risk safeguards—within a 24-hour MVP scope.
+1. **Recolección** de order books públicos vía CCXT (Binance, Kraken, Coinbase, OKX).
+2. **Detección** de oportunidades cuando `buyExchange.ask < sellExchange.bid`.
+3. **Evaluación** de rentabilidad neta con fees, slippage, latencia y balances simulados.
+4. **Ejecución simulada** con soporte de fills parciales y motor de riesgo.
+5. **Visualización** en tiempo real por WebSocket en un dashboard responsive.
 
----
-
-## Key Features
-
-| Feature | Description |
-|--------|-------------|
-| **Real-time BTC market monitoring** | Polls public order books every **1.5s** with per-exchange latency measurement |
-| **Multi-exchange order book comparison** | Normalized books from Binance, Kraken, Coinbase, OKX |
-| **Arbitrage opportunity detection** | All pairwise combinations where ask < bid on another venue |
-| **Net profitability calculation** | Gross spread minus fees, slippage, and latency penalty |
-| **Fee-aware simulated execution** | Per-exchange fee model (Binance 0.10%, Kraken 0.26%, Coinbase 0.60%, OKX 0.10%) |
-| **Slippage estimation** | Volume-weighted average price across top **10** order book levels |
-| **Partial order execution** | Fills limited by book depth and simulated wallet balances |
-| **Simulated wallets** | Independent fiat + BTC balances per exchange |
-| **Risk engine** | Rejects opportunities that fail profit, volume, latency, or liquidity rules |
-| **Circuit breaker** | Pauses auto-execution for **60s** after **3** consecutive negative simulated trades |
-| **Opportunity Score (0–100)** | Weighted score with Excellent / Good / Moderate / Weak ratings |
-| **Trade history** | Executed, partial, and rejected simulated trades with reasons |
-| **Cumulative P&L chart** | Recharts area chart of simulated cumulative profit |
-| **Responsive dashboard** | Dark, professional single-page UI (TailwindCSS) |
-
-Additional resilience features:
-
-- **Mock fallback** when a public CCXT feed fails (exchange marked `offline`, app keeps running).
-- **`DEMO_MODE`** optional bps offsets for hackathon demos when real markets are too efficient to show executions.
-- **`localStorage` persistence** on the frontend so trade history survives page reloads.
+El sistema demuestra cómo razonaría un desk de arbitraje en producción, sin mover capital real.
 
 ---
 
-## Tech Stack
+## 2. Objetivo del challenge
+
+El challenge pide construir un sistema que:
+
+- Monitoree precios y order books de BTC en múltiples exchanges.
+- Detecte oportunidades de arbitraje cross-exchange.
+- Calcule si el spread sigue siendo rentable después de costos operativos.
+- Simule la ejecución y presente resultados de forma clara para revisión técnica.
+
+Balam Xchange cumple ese objetivo de extremo a extremo: datos públicos → oportunidades puntuadas → ejecución simulada → historial, P&L acumulado y salvaguardas de riesgo, dentro del alcance de un MVP de hackathon.
+
+---
+
+## 3. Stack tecnológico
 
 ### Frontend
 
-- **React 19** + **TypeScript**
-- **Vite** (dev server & build)
-- **TailwindCSS** (UI)
-- **Recharts** (cumulative P&L visualization)
-- WebSocket client with reconnect + `localStorage` history merge
+| Tecnología | Uso |
+|------------|-----|
+| React 19 + TypeScript | UI del dashboard |
+| Vite | Dev server y build |
+| TailwindCSS | Diseño oscuro responsive |
+| Recharts | Gráfica de P&L acumulado |
+| WebSocket client | Estado en vivo + reconexión automática |
+| localStorage | Persistencia de historial al recargar |
 
 ### Backend
 
-- **Node.js** + **TypeScript**
-- **Express** (REST: `/health`, `/api/state`)
-- **`ws`** (dedicated WebSocket broadcast server)
-- **CCXT** (public order book fetching—no API keys)
-- In-memory orchestration (`AppOrchestrator`)
+| Tecnología | Uso |
+|------------|-----|
+| Node.js + TypeScript | Runtime y tipado |
+| Express | REST (`/health`, `/api/state`) |
+| ws | Broadcast WebSocket dedicado |
+| CCXT | Order books públicos (sin API keys) |
+| In-memory state | Orquestación vía `AppOrchestrator` |
 
 ### Deployment
 
-- **Local:** npm workspaces + `concurrently`
-- **Production target:** Docker, Docker Compose, and **Coolify**-compatible packaging *(planned—see [Docker](#docker-planned) below)*
+| Entorno | Estado |
+|---------|--------|
+| Local (npm workspaces) | ✅ Implementado |
+| Docker + Docker Compose | 🔜 Planificado |
+| Coolify | 🔜 Planificado (compatible con empaquetado Docker) |
 
 ---
 
-## Project Architecture
+## 4. Arquitectura del proyecto
 
 ```
-arbiter-btc/
+balam-xchange/
 ├── backend/
 │   ├── src/
-│   │   ├── config.ts              # Env, fees, wallets, demo mode
-│   │   ├── index.ts               # Express HTTP server
+│   │   ├── config.ts
+│   │   ├── index.ts
 │   │   ├── types/
 │   │   ├── services/
-│   │   │   ├── orderBookService.ts
-│   │   │   ├── mockDataService.ts
-│   │   │   ├── arbitrageEngine.ts
-│   │   │   ├── slippageService.ts
-│   │   │   ├── walletService.ts
-│   │   │   ├── riskEngine.ts
-│   │   │   └── orchestrator.ts
+│   │   │   ├── orderBookService.ts    # CCXT + normalización
+│   │   │   ├── mockDataService.ts     # Fallback si falla un exchange
+│   │   │   ├── arbitrageEngine.ts     # Detección de oportunidades
+│   │   │   ├── slippageService.ts     # Slippage, latencia, score
+│   │   │   ├── walletService.ts       # Wallets y ejecución simulada
+│   │   │   ├── riskEngine.ts          # Validación y circuit breaker
+│   │   │   └── orchestrator.ts        # Polling + auto-ejecución
 │   │   └── websocket/
 │   │       └── wsServer.ts
 │   ├── .env.example
-│   ├── package.json
-│   └── tsconfig.json
+│   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   ├── components/            # Dashboard sections
+│   │   ├── components/                # Secciones del dashboard
 │   │   ├── hooks/useWebSocket.ts
 │   │   ├── types/
-│   │   ├── utils/format.ts
-│   │   ├── App.tsx
-│   │   └── main.tsx
+│   │   └── utils/format.ts
 │   ├── .env.example
-│   ├── package.json
 │   └── vite.config.ts
-├── screenshots/                   # Placeholder for demo captures
-├── package.json                   # Root scripts (npm run dev)
+├── screenshots/
+├── package.json
 ├── .gitignore
 └── README.md
 ```
 
-**Planned deployment assets:** `Dockerfile`, `docker-compose.yml` (single-port production bundle for Coolify).
-
-### Data flow
+### Flujo de datos
 
 ```
-CCXT (public APIs)  →  OrderBookService  →  ArbitrageEngine
-                              ↓                      ↓
-                        Mock fallback          RiskEngine + WalletService
-                              ↓                      ↓
-                        AppOrchestrator  ←  Simulated trades
-                              ↓
-                   WebSocket broadcast  →  React dashboard
+CCXT (APIs públicas)
+    → OrderBookService (normalización + fallback mock)
+    → ArbitrageEngine (detección + score)
+    → RiskEngine + WalletService (validación + ejecución simulada)
+    → AppOrchestrator (estado unificado)
+    → WebSocket broadcast
+    → Dashboard React
 ```
 
-**Design choice:** HTTP (`PORT`) and WebSocket (`WS_PORT`) run on **separate ports** in development. This keeps the MVP simple to debug; production Docker packaging will reverse-proxy both behind one public port.
+**Decisión técnica:** HTTP (`PORT`) y WebSocket (`WS_PORT`) usan puertos separados en desarrollo para simplificar el debug. El empaquetado Docker futuro unificará ambos detrás de un reverse proxy.
 
 ---
 
-## How It Works
+## 5. Instalación
 
-### Market Data Collection
+### Requisitos
 
-- Every **1500 ms**, the backend fetches public order books for:
-  - Binance & OKX → `BTC/USDT`
-  - Kraken & Coinbase → `BTC/USD`
-- Each book is normalized to a shared schema: best bid/ask, top 10 levels, timestamp, latency, online/offline status.
-- If CCXT fails for an exchange, **realistic mock data** is used and the venue is marked `offline`.
-- With `DEMO_MODE=true` (default), tiny per-exchange bps offsets can be applied so judges can observe simulated executions during efficient market conditions. Set `DEMO_MODE=false` for unmodified public prices.
+- Node.js 20+
+- npm 10+
+- Acceso a internet (APIs públicas de exchanges)
 
-### Arbitrage Detection
+### Pasos
 
-For every ordered pair `(buyExchange, sellExchange)` where `buyExchange ≠ sellExchange`:
-
-```
-IF buyExchange.ask < sellExchange.bid
-   → opportunity detected
+```bash
+git clone https://github.com/ManuelCanulDev/Coding_Challenge_Mexico.git
+cd Coding_Challenge_Mexico
+npm install
 ```
 
-The engine ranks all opportunities by **Opportunity Score** (descending).
+Opcional — variables de entorno:
 
-### Net Profit Calculation
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
 
-Per opportunity/trade, the backend estimates:
+---
+
+## 6. Ejecución local
+
+Desde la **raíz del repositorio**:
+
+```bash
+npm run dev
+```
+
+Levanta backend y frontend en paralelo.
+
+| Servicio | URL |
+|----------|-----|
+| Frontend | http://localhost:5173 |
+| Backend (HTTP) | http://localhost:3001 |
+| WebSocket | ws://localhost:3002 |
+
+### Servicios individuales
+
+```bash
+npm run dev:backend   # solo backend (desde la raíz)
+npm run dev:frontend  # solo frontend (desde la raíz)
+```
+
+Desde `backend/`:
+
+```bash
+npm run dev
+```
+
+### Build de producción
+
+```bash
+npm run build
+cd backend && npm start   # API compilada en backend/dist
+```
+
+---
+
+## 7. Docker / Coolify
+
+> **Estado actual:** no incluido en el repositorio. Planificado como mejora de deployment.
+
+La ruta prevista es un `Dockerfile` + `docker-compose.yml` que:
+
+- Compile frontend y backend.
+- Sirva el dashboard estático y la API/WebSocket detrás de un solo puerto expuesto.
+- Sea desplegable en **Coolify** con variables de entorno inyectadas.
+
+**Comando objetivo (futuro):**
+
+```bash
+docker compose up --build
+```
+
+**URL objetivo en producción (futuro):** http://localhost:4000
+
+Hasta entonces, usar la ejecución local descrita en la sección 6.
+
+---
+
+## 8. Variables de entorno
+
+### Backend (`backend/.env`)
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `PORT` | `3001` | Puerto HTTP |
+| `WS_PORT` | `3002` | Puerto WebSocket |
+| `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido del frontend |
+| `POLL_INTERVAL_MS` | `1500` | Intervalo de polling |
+| `AUTO_EXECUTE` | `true` | Auto-ejecutar trades simulados |
+| `MIN_NET_PROFIT_PCT` | `0.02` | Beneficio neto mínimo (%) |
+| `MIN_VOLUME_BTC` | `0.001` | Volumen mínimo ejecutable |
+| `MAX_COMBINED_LATENCY_MS` | `2000` | Latencia combinada máxima |
+| `CIRCUIT_BREAKER_THRESHOLD` | `3` | Trades negativos antes de pausar |
+| `CIRCUIT_BREAKER_COOLDOWN_MS` | `60000` | Cooldown del circuit breaker (ms) |
+| `DEMO_MODE` | `true` | Offsets demo en bps (`false` = precios reales sin alterar) |
+
+Ejemplo:
+
+```env
+PORT=3001
+WS_PORT=3002
+CORS_ORIGIN=http://localhost:5173
+DEMO_MODE=false
+```
+
+### Frontend (`frontend/.env`)
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `VITE_WS_URL` | `ws://localhost:3002` | Endpoint WebSocket |
+| `VITE_API_URL` | `http://localhost:3001` | Base URL REST (fallback) |
+
+**No se requieren API keys.** CCXT consume únicamente endpoints públicos.
+
+---
+
+## 9. Capturas de pantalla
+
+Añadir capturas en `/screenshots` antes de la entrega:
+
+![Vista general del dashboard](./screenshots/dashboard-overview.png)
+
+![Oportunidades en vivo](./screenshots/live-opportunities.png)
+
+![Historial de trades y P&L](./screenshots/trade-history-pnl.png)
+
+*(Directorio placeholder incluido — reemplazar con capturas reales de la demo.)*
+
+---
+
+## 10. Motor de arbitraje
+
+El `ArbitrageEngine` compara **todos los pares de exchanges** en cada ciclo de polling.
+
+**Condición de detección:**
+
+```
+buyExchange.ask < sellExchange.bid
+```
+
+Para cada par válido el motor calcula:
+
+- Spread bruto (USD y %)
+- Fees estimados de compra y venta
+- Slippage sobre los primeros 10 niveles del book
+- Penalización por latencia combinada
+- Beneficio neto y volumen máximo ejecutable
+- Opportunity Score y rating
+
+Las oportunidades se ordenan por score descendente. Con `AUTO_EXECUTE=true`, el orchestrator intenta ejecutar la mejor oportunidad aprobada por el risk engine (cooldown de 3 s entre intentos).
+
+**Exchanges soportados:**
+
+| Exchange | Par | Fee default |
+|----------|-----|-------------|
+| Binance | BTC/USDT | 0.10% |
+| Kraken | BTC/USD | 0.26% |
+| Coinbase | BTC/USD | 0.60% |
+| OKX | BTC/USDT | 0.10% |
+
+---
+
+## 11. Cálculo de rentabilidad neta
 
 ```
 notional = volumeBtc * buyPrice
@@ -189,39 +311,89 @@ netProfitUsd = grossProfitUsd
 netProfitPct = netProfitUsd / notional * 100
 ```
 
-**Latency penalty:** `0.01%` of notional per **500 ms** of combined buy+sell fetch latency.
+**Penalización por latencia:** `0.01%` del nocional por cada **500 ms** de latencia combinada de fetch (compra + venta).
 
-An opportunity is marked **executable** when `netProfitUsd > 0` and `netProfitPct > 0.02%`.
+**Slippage:** precio promedio ponderado en los 10 primeros niveles del order book; la diferencia vs. mejor precio se convierte en costo USD.
 
-### Simulated Execution
+Una oportunidad se marca `executable` cuando `netProfitUsd > 0` y `netProfitPct > 0.02%`.
 
-When `AUTO_EXECUTE=true` and the risk engine approves the top opportunity:
+---
 
-1. Buy-side fiat is debited (including buy fee); BTC is credited on the buy exchange.
-2. BTC is debited on the sell exchange; fiat is credited (minus sell fee).
-3. Volume is capped by order book depth **and** simulated wallet balances.
-4. Trades are recorded as `executed`, `partial`, or `rejected` with a human-readable `reason`.
+## 12. Simulación de ejecución
 
-Initial simulated balances per exchange: **100,000 USDT/USD** and **1 BTC**.
+La ejecución es **100% simulada** en memoria. No se envían órdenes a exchanges.
 
-### Risk Engine
+Flujo cuando el risk engine aprueba:
 
-The system **rejects** simulated execution when:
+1. Se calcula volumen máximo viable (liquidez + balances).
+2. `WalletService.executeTrade()` aplica precios con slippage.
+3. Se actualizan balances fiat/BTC en ambos exchanges.
+4. Se registra el trade con status `executed`, `partial` o `rejected` y un campo `reason`.
 
-| Rule | Default threshold |
-|------|-------------------|
-| Net profit too low | `netProfitPct ≤ 0.02%` |
-| Insufficient liquidity | `maxExecutableBtc ≤ 0` |
-| Wallet balance insufficient | Cannot fund buy or sell leg |
-| Combined latency too high | `> 2000 ms` |
-| Volume below minimum | `< 0.001 BTC` |
-| Circuit breaker active | After 3 consecutive negative trades |
+Estados posibles del trade:
 
-When rejected, the opportunity/trade includes an explicit **reason** string for the dashboard.
+| Status | Significado |
+|--------|-------------|
+| `executed` | Fill completo dentro de límites |
+| `partial` | Fill reducido por liquidez o balance |
+| `rejected` | No ejecutado (riesgo, balance o liquidez) |
 
-### Opportunity Score
+---
 
-Score is computed on a **0–100** scale:
+## 13. Manejo de wallets simuladas
+
+Cada exchange mantiene balances independientes en memoria:
+
+| Exchange | Fiat inicial | BTC inicial |
+|----------|--------------|-------------|
+| Binance | 100,000 USDT | 1 BTC |
+| Kraken | 100,000 USD | 1 BTC |
+| Coinbase | 100,000 USD | 1 BTC |
+| OKX | 100,000 USDT | 1 BTC |
+
+**Al comprar (exchange A):** debita fiat (+ fee), acredita BTC.
+
+**Al vender (exchange B):** debita BTC, acredita fiat (− fee).
+
+El dashboard muestra fiat, BTC y valor total estimado por exchange. Los balances se reinician al reiniciar el backend (estado en memoria).
+
+---
+
+## 14. Manejo de órdenes parciales
+
+Si el volumen objetivo no cabe en el book o en los balances simulados:
+
+- Se ejecuta el **máximo volumen viable** (`min` entre liquidez bid/ask, balance fiat de compra y balance BTC de venta).
+- El trade se marca `partial` si el fill es menor al objetivo o si algún lado del book no tiene liquidez suficiente en 10 niveles.
+- Si el volumen resultante es `< 0.001 BTC`, se rechaza.
+
+Esto refleja la realidad operativa: el arbitraje raramente llena el tamaño teórico completo.
+
+---
+
+## 15. Motor de riesgo
+
+El `RiskEngine` valida cada oportunidad antes de simular ejecución:
+
+| Regla | Umbral default |
+|-------|----------------|
+| Beneficio neto insuficiente | `netProfitPct ≤ 0.02%` |
+| Beneficio USD no positivo | `netProfitUsd ≤ 0` |
+| Liquidez insuficiente | `maxExecutableBtc ≤ 0` |
+| Volumen bajo mínimo | `< 0.001 BTC` |
+| Latencia combinada alta | `> 2000 ms` |
+| Balance insuficiente | Validado en `WalletService` |
+| Circuit breaker activo | Pausa tras 3 trades negativos seguidos |
+
+**Circuit breaker:** tras 3 trades simulados con `netProfitUsd < 0`, la auto-ejecución se pausa **60 segundos**. El dashboard muestra el estado ON/OFF y el bot pasa a `Paused`.
+
+Cada rechazo incluye un string `reason` visible en la UI.
+
+---
+
+## 16. Opportunity Score
+
+Puntuación **0–100** para priorizar oportunidades:
 
 ```
 score = netProfitPct * 10_000
@@ -239,214 +411,56 @@ score = clamp(score, 0, 100)
 | 40–59 | Moderate |
 | < 40 | Weak |
 
----
-
-## Dashboard
-
-Single-page dark dashboard with eight sections:
-
-| Section | Content |
-|---------|---------|
-| **Header & bot status** | App title, bot Active/Paused, circuit breaker ON/OFF, WebSocket connection |
-| **Market overview** | Per-exchange bid, ask, spread, latency, online/offline, last update |
-| **Live opportunities** | Buy/sell venues, spreads, net profit, max BTC, score, rating, status, reason |
-| **Simulated trades** | Timestamped execution log with volume, P&L, status |
-| **Performance cards** | Total P&L, trades executed, opportunities detected/rejected, win rate, avg profit |
-| **P&L chart** | Cumulative simulated profit over time (Recharts) |
-| **Wallets** | Fiat + BTC balances and estimated total value per exchange |
-| **Technical panel** | Data mode, execution mode, book depth, fee model, risk engine, strategy |
-
-Color semantics: **green** = positive profit, **red** = rejected/negative, **amber** = warnings/partial states.
+Factores considerados: rentabilidad neta, volumen ejecutable, latencia y penalizaciones de riesgo contextual.
 
 ---
 
-## Installation
+## 17. Limitaciones actuales
 
-### Prerequisites
-
-- **Node.js 20+**
-- **npm 10+**
-- Internet access to public exchange APIs
-
-### Quick start
-
-```bash
-git clone https://github.com/YOUR-USERNAME/arbiter-btc.git
-cd arbiter-btc
-npm install
-npm run dev
-```
-
-This starts **both** backend and frontend via npm workspaces.
-
-| Service | URL |
-|---------|-----|
-| **Frontend** | http://localhost:5173 |
-| **Backend (HTTP)** | http://localhost:3001 |
-| **WebSocket** | ws://localhost:3002 |
-
-### Run services individually
-
-From the **repository root**:
-
-```bash
-npm run dev:backend   # backend only
-npm run dev:frontend  # frontend only
-```
-
-From **`backend/`**, use `npm run dev` (not `dev:backend`—that script lives in the root `package.json`).
-
-### Optional environment setup
-
-```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
-
-### Production build
-
-```bash
-npm run build
-npm run build:backend   # backend only → backend/dist
-npm run build:frontend  # frontend only → frontend/dist
-```
-
-Start compiled backend:
-
-```bash
-cd backend && npm start
-```
+- **Solo simulación** — sin órdenes reales ni settlement.
+- **Sin APIs privadas** — order books públicos únicamente.
+- **Estado en memoria** — el backend pierde estado al reiniciar.
+- **USDT ≈ USD** — tratados como equivalentes en el MVP (sin capa FX).
+- **Polling REST cada 1.5 s** — no es arquitectura HFT ni WebSocket nativo de exchanges.
+- **Fallback mock** — si CCXT falla, se inyectan precios simulados (exchange `offline`).
+- **`DEMO_MODE`** — offsets en bps para demos cuando mercados reales son demasiado eficientes.
+- **Sin Docker/Coolify en repo** — deployment containerizado pendiente.
+- **Modelado simplificado** — sin costos de retiro, transferencias inter-exchange ni confirmaciones on-chain.
 
 ---
 
-## Docker (Planned)
+## 18. Mejoras futuras
 
-Production deployment via **Docker Compose** and **Coolify** is the intended path: a single container (or compose stack) serving the built frontend statically and the API/WebSocket backend on one exposed port.
-
-**Target command (planned):**
-
-```bash
-docker compose up --build
-```
-
-**Target production URL (planned):** http://localhost:4000
-
-> Docker assets (`Dockerfile`, `docker-compose.yml`) are not yet committed. Local development uses the split-port setup above. See [Future Improvements](#future-improvements).
-
----
-
-## Environment Variables
-
-### Backend (`backend/.env`)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3001` | HTTP server port |
-| `WS_PORT` | `3002` | WebSocket server port |
-| `CORS_ORIGIN` | `http://localhost:5173` | Allowed frontend origin |
-| `POLL_INTERVAL_MS` | `1500` | Order book polling interval |
-| `AUTO_EXECUTE` | `true` | Auto-run simulated trades |
-| `MIN_NET_PROFIT_PCT` | `0.02` | Minimum net profit % |
-| `MIN_VOLUME_BTC` | `0.001` | Minimum executable volume |
-| `MAX_COMBINED_LATENCY_MS` | `2000` | Max combined fetch latency |
-| `CIRCUIT_BREAKER_THRESHOLD` | `3` | Negative trades before pause |
-| `CIRCUIT_BREAKER_COOLDOWN_MS` | `60000` | Circuit breaker cooldown |
-| `DEMO_MODE` | `true` | Apply demo bps offsets (`false` = raw public prices) |
-
-Example:
-
-```env
-PORT=3001
-WS_PORT=3002
-CORS_ORIGIN=http://localhost:5173
-DEMO_MODE=false
-```
-
-### Frontend (`frontend/.env`)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_WS_URL` | `ws://localhost:3002` | WebSocket endpoint |
-| `VITE_API_URL` | `http://localhost:3001` | REST API base (optional fallback) |
-
-Example:
-
-```env
-VITE_WS_URL=ws://localhost:3002
-VITE_API_URL=http://localhost:3001
-```
-
-**No API keys required.** CCXT uses public market data endpoints only.
+- [ ] `Dockerfile` + `docker-compose.yml` para Coolify y puerto único
+- [ ] WebSocket feeds nativos por exchange
+- [ ] Base de datos persistente (PostgreSQL)
+- [ ] Backtesting con datos históricos
+- [ ] Soporte multi-activo (ETH, SOL, …)
+- [ ] Arbitraje triangular
+- [ ] Modelado avanzado de latencia y FX USDT/USD
+- [ ] Replay histórico de mercado
+- [ ] Autenticación y multi-usuario
+- [ ] Perfiles de fees maker/taker por tier
+- [ ] Eliminar fallback mock en modo producción estricto
 
 ---
 
-## Screenshots
+## 19. Disclaimer
 
-Add captures to `/screenshots` before submission. Expected filenames:
+Balam Xchange es un **proyecto educativo para hackathon**. Demuestra análisis de mercado, modelado de arbitraje y simulación con controles de riesgo.
 
-![Dashboard Overview](./screenshots/dashboard-overview.png)
+- **No es asesoría financiera.**
+- **No es un producto de trading.**
+- **No ejecuta operaciones reales.**
 
-![Live Opportunities](./screenshots/live-opportunities.png)
-
-![Trade History and P&L](./screenshots/trade-history-pnl.png)
-
-*(Placeholder directory included—replace with actual screenshots for the hackathon demo.)*
+No utilices este software para operar capital real sin revisión profesional, cumplimiento regulatorio y infraestructura de producción adecuada.
 
 ---
 
-## Current Limitations
+## Autor
 
-- **Simulation only** — no real order placement or settlement.
-- **No private APIs** — public order books only; no authenticated account data.
-- **In-memory backend state** — resets on server restart (frontend persists trade history in `localStorage`).
-- **Public exchange API availability may vary** — rate limits, geo restrictions, or downtime affect feeds; mock fallback keeps the demo alive.
-- **Simplified latency and withdrawal cost modeling** — no network transfer times, chain confirmations, or cross-exchange capital movement.
-- **USDT/USD equivalence** — USDT and USD balances are treated as USD-equivalent for MVP math.
-- **Polling, not native exchange WebSockets** — 1.5s REST polling is not HFT-grade.
-- **Docker deployment not yet shipped** — local split-port dev is the current supported path.
+Desarrollado para el **Bitcoin Arbitrage Hackathon Challenge**.
 
----
+## Licencia
 
-## Future Improvements
-
-- [ ] **Dockerfile + docker-compose.yml** for single-port Coolify deployment
-- [ ] Native exchange **WebSocket** feeds instead of REST polling
-- [ ] **Persistent database** (PostgreSQL) for trades and audit logs
-- [ ] **Backtesting** mode with historical CCXT OHLCV / order book snapshots
-- [ ] **Multi-asset** support (ETH, SOL, etc.)
-- [ ] **Triangular arbitrage** (e.g. BTC → ETH → USDT → BTC)
-- [ ] **Advanced latency modeling** (per-leg RTT, colocation assumptions)
-- [ ] **Historical replay** for strategy validation
-- [ ] **Authentication** and multi-user dashboards
-- [ ] Exchange-specific **advanced fee profiles** (maker/taker tiers, VIP discounts)
-- [ ] Dedicated **USDT/USD FX** normalization layer
-
----
-
-## Technical Decisions (Hackathon MVP)
-
-1. **npm workspaces monorepo** — one `npm run dev` for judges; minimal setup friction.
-2. **Separate WebSocket port** — avoids Express upgrade complexity during rapid iteration.
-3. **CCXT** — unified public API across four exchanges without custom integrations.
-4. **Top-10 slippage model** — realistic enough for demo; avoids full book simulation cost.
-5. **In-memory state + localStorage** — no database setup within 24 hours.
-6. **Risk engine + circuit breaker** — shows production-minded guardrails even in simulation.
-7. **Mock fallback + DEMO_MODE** — demo stability when APIs fail or markets are perfectly efficient.
-
----
-
-## Disclaimer
-
-Arbiter BTC is an **educational hackathon project** built to demonstrate real-time market analysis, arbitrage modeling, and risk-aware simulation. It is **not financial advice**, **not a trading product**, and **does not execute real transactions**. Never use this software to trade live assets without independent professional review and proper licensing/compliance.
-
----
-
-## Author
-
-Developed for the **Bitcoin Arbitrage Hackathon Challenge**.
-
----
-
-## License
-
-MIT — hackathon demonstration project.
+MIT — proyecto de demostración para hackathon.
